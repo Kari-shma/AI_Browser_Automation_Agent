@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.click: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\"label:has-text('Core 5 (Series 2)')\")\n", "step_id": 5, "selector": "label:has-text('Core 5 (Series 2)')"}
+
+
+STDERR:
+

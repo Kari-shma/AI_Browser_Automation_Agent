@@ -1,5 +1,5 @@
 import os
-from PIL import Image, ImageChops, ImageDraw
+from PIL import Image, ImageChops
 from datetime import datetime
 
 def compare_screenshots(
@@ -22,46 +22,37 @@ def compare_screenshots(
     
     img1 = Image.open(baseline_path).convert("RGB")
     img2 = Image.open(current_path).convert("RGB")
-    
+
     # If sizes differ, resize current image to match baseline
     if img1.size != img2.size:
         img2 = img2.resize(img1.size, Image.Resampling.LANCZOS)
-        
-    # Generate visual difference
-    diff = ImageChops.difference(img1, img2)
-    
-    # Get bounding box of differences
-    bbox = diff.getbbox()
-    
-    # Calculate difference percentage
-    # We can count non-zero pixels in the diff
-    non_zero_pixels = 0
-    diff_pixels = diff.load()
-    width, height = diff.size
+
+    width, height = img1.size
     total_pixels = width * height
-    
-    # Create diff image for display
-    # We overlay the diff on top of the original image
-    highlight_img = img1.copy()
-    draw = ImageDraw.Draw(highlight_img)
-    
-    # Check pixels that have a difference above a small noise threshold
-    for y in range(height):
-        for x in range(width):
-            r, g, b = diff_pixels[x, y]
-            # If the difference in any channel is > 10 (filter out minor compression artifacts)
-            if r > 10 or g > 10 or b > 10:
-                non_zero_pixels += 1
-                # Draw red overlay with low opacity by drawing a point
-                # (to keep it simple without complex pixel access, we can paint a red pixel directly on highlight_img)
-                highlight_img.putpixel((x, y), (255, 0, 0))
-                
-    diff_percentage = (non_zero_pixels / total_pixels) * 100
-    
+
+    # Per-pixel absolute difference, collapsed to a single-channel "max change" map.
+    # Doing this with Pillow primitives keeps it vectorized in C instead of a slow
+    # per-pixel Python loop (which stalled on full-page screenshots).
+    diff = ImageChops.difference(img1, img2)
+    diff_gray = diff.convert("L")  # luminance approximates the magnitude of change
+
+    # Build a binary mask: pixels whose change exceeds the noise threshold (>10).
+    NOISE_THRESHOLD = 10
+    mask = diff_gray.point(lambda v: 255 if v > NOISE_THRESHOLD else 0).convert("L")
+
+    # Count changed pixels from the mask histogram (index 255 holds the white count).
+    non_zero_pixels = mask.histogram()[255]
+    diff_percentage = (non_zero_pixels / total_pixels) * 100 if total_pixels else 0.0
+
     status = "pass"
     if diff_percentage > threshold:
         status = "fail"
-        
+
+    # Composite a solid-red layer onto the baseline wherever the mask is set, so the
+    # saved diff image highlights exactly what changed.
+    red_layer = Image.new("RGB", img1.size, (255, 0, 0))
+    highlight_img = Image.composite(red_layer, img1, mask)
+
     # Save the highlighted diff image
     highlight_img.save(diff_image_path)
     

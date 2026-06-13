@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.wait_for_selector: Timeout 20000ms exceeded.\nCall log:\n  - waiting for locator(\"#searchDropdownBox\") to be visible\n", "step_id": 5, "selector": "#searchDropdownBox"}
+
+
+STDERR:
+

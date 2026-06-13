@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\".a-button-text\")\n", "step_id": 2, "selector": ".a-button-text"}
+
+
+STDERR:
+

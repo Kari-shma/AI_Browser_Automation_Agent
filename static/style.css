@@ -198,6 +198,12 @@ textarea.form-control {
     transition: all 0.2s ease;
 }
 
+.btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 .btn-primary {
     background: var(--primary);
     color: white;
@@ -530,6 +536,17 @@ textarea.form-control {
     display: flex;
     gap: 1rem;
     margin-top: 1rem;
+    align-items: center;
+}
+
+.run-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary, #888);
+    cursor: pointer;
+    user-select: none;
 }
 
 /* Diagnostics & Repair details styling */

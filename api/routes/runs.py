@@ -16,17 +16,19 @@ def run_flow_endpoint(
     max_repair_attempts: int = Body(3, embed=True),
     x_api_key: Optional[str] = Header(None),
     x_api_provider: Optional[str] = Header("openai"),
-    x_api_base_url: Optional[str] = Header(None)
+    x_api_base_url: Optional[str] = Header(None),
+    x_api_model: Optional[str] = Header(None)
 ):
     if not x_api_key:
         raise HTTPException(status_code=400, detail="Missing API Key in headers (X-API-Key)")
-        
+
     try:
         report = orchestrator.run_orchestrated_flow(
             flow_id=flow_id,
             api_key=x_api_key,
             provider=x_api_provider,
             base_url=x_api_base_url,
+            model=x_api_model,
             browser=browser,
             headless=headless,
             max_repair_attempts=max_repair_attempts

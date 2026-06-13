@@ -12,6 +12,17 @@ Guidelines:
 2. NEVER modify assertion logic, test flow ordering, or other steps that are passing.
 3. Keep the overall script structure, import statements, try-except harness, and argument parsing exactly the same.
 4. Ensure the output is a valid, compilable Python script.
+5. OVERLAY / "intercepts pointer events" failures: if the diagnosis or explanation says an
+   overlay, modal, popover, or cookie/consent banner is intercepting the click (rather than
+   the element being missing), DO NOT just increase the timeout — that will not help. Instead,
+   immediately BEFORE the failing click, insert code to dismiss the blocking overlay, then
+   click. Prefer, in order: (a) click the close/accept button selector named in the diagnosis
+   (e.g. `page.click("<close_selector>", timeout=2000)` wrapped in try/except), (b)
+   `page.keyboard.press("Escape")`, then (c) as a last resort change the failing click to a
+   forced click by adding `force=True` (e.g. `page.click(selector, timeout=timeout, force=True)`).
+   If the script already defines a `safe_click`/`dismiss_overlays` helper, route the failing
+   click through `safe_click(page, selector, timeout)` instead of `page.click(...)`.
+   Wrap any best-effort dismissal in try/except so it never crashes the run.
 
 Output ONLY the fully patched Python script code. Do not wrap the response in markdown code blocks (like ```python) or include extra text.
 """
@@ -22,7 +33,8 @@ def repair_script(
     diagnosis: DiagnosisReport,
     api_key: str,
     provider: str = "openai",
-    base_url: Optional[str] = None
+    base_url: Optional[str] = None,
+    model: Optional[str] = None
 ) -> str:
     # Backup the original script
     generated_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts", "generated")
@@ -51,7 +63,8 @@ def repair_script(
         user_prompt=user_prompt,
         api_key=api_key,
         provider=provider,
-        base_url=base_url
+        base_url=base_url,
+        model=model
     )
     
     # Strip markdown if any
@@ -63,5 +76,16 @@ def repair_script(
         
     if patched_code.endswith("```"):
         patched_code = patched_code[:-3]
-        
-    return patched_code.strip()
+
+    patched_code = patched_code.strip()
+
+    # Guard: a patch that doesn't compile (or that the model truncated) must not
+    # replace a runnable script. Fall back to the original so the run can proceed
+    # / be re-diagnosed instead of failing on a syntax error.
+    try:
+        compile(patched_code, "<patched_script>", "exec")
+    except SyntaxError as e:
+        print(f"Repair produced invalid Python (line {e.lineno}: {e.msg}); keeping original script.")
+        return original_script
+
+    return patched_code

@@ -15,6 +15,7 @@ const els = {
     settingProvider: document.getElementById('setting-provider'),
     settingApiKey: document.getElementById('setting-api-key'),
     settingBaseUrl: document.getElementById('setting-base-url'),
+    settingModel: document.getElementById('setting-model'),
     
     inputUrl: document.getElementById('input-url'),
     inputGoal: document.getElementById('input-goal'),
@@ -34,6 +35,8 @@ const els = {
     btnSaveScript: document.getElementById('btn-save-script'),
     btnGenerateScript: document.getElementById('btn-generate-script'),
     btnRunFlow: document.getElementById('btn-run-flow'),
+    btnFixRun: document.getElementById('btn-fix-run'),
+    chkHeadless: document.getElementById('chk-headless'),
     
     runsList: document.getElementById('runs-list'),
     runEmptyState: document.getElementById('run-empty-state'),
@@ -76,6 +79,7 @@ function loadSettings() {
     els.settingProvider.value = localStorage.getItem('provider') || 'openai';
     els.settingApiKey.value = localStorage.getItem('apiKey') || '';
     els.settingBaseUrl.value = localStorage.getItem('baseUrl') || '';
+    if (els.settingModel) els.settingModel.value = localStorage.getItem('model') || '';
     toggleBaseUrlField();
 }
 
@@ -98,7 +102,10 @@ function getHeaders() {
     
     const baseUrl = localStorage.getItem('baseUrl');
     if (baseUrl) headers['X-API-Base-Url'] = baseUrl;
-    
+
+    const model = localStorage.getItem('model');
+    if (model) headers['X-API-Model'] = model;
+
     return headers;
 }
 
@@ -111,6 +118,7 @@ function bindEvents() {
         localStorage.setItem('provider', els.settingProvider.value);
         localStorage.setItem('apiKey', els.settingApiKey.value);
         localStorage.setItem('baseUrl', els.settingBaseUrl.value);
+        if (els.settingModel) localStorage.setItem('model', els.settingModel.value.trim());
         els.settingsModal.style.display = 'none';
         showToast('Settings saved.');
     });
@@ -138,7 +146,8 @@ function bindEvents() {
     // Script & execution actions
     els.btnGenerateScript.addEventListener('click', generateScript);
     els.btnSaveScript.addEventListener('click', saveScriptChanges);
-    els.btnRunFlow.addEventListener('click', executeFlow);
+    els.btnRunFlow.addEventListener('click', () => executeFlow(false));
+    els.btnFixRun.addEventListener('click', () => executeFlow(true));
     
     // Baseline & visual diff modal
     els.btnPromoteBaseline.addEventListener('click', setBaseline);
@@ -236,7 +245,10 @@ function renderRuns() {
 function selectFlow(flowId) {
     state.activeFlowId = flowId;
     renderFlows();
-    
+
+    // Reset the self-heal button until this flow has a failing run.
+    setFixButtonEnabled(false);
+
     const flow = state.flows.find(f => f.flow_id === flowId);
     if (!flow) return;
     
@@ -335,49 +347,59 @@ async function generateScript() {
     }
 }
 
-// Load Script Content
+// Load Script Content (reads the saved script; does NOT call the LLM)
 async function loadScript(flowId) {
+    if (!flowId) return;
     try {
         els.codeEditorBlock.textContent = '# Loading script...';
-        const res = await fetch(`/api/flows/${flowId}`);
-        const flow = await res.json();
-        
-        // Fetch generated script details
-        const scriptRes = await fetch(`/api/runs?flow_id=${flowId}`);
-        const runs = await scriptRes.json();
-        
-        // Try to read code via dynamic API endpoint or fallback helper (let's assume it returned success in generate and is saved)
-        // For editing, let's load what's generated. We can define a tiny route if needed, or fallback.
-        // Let's implement a quick API fetch if possible, or read the generated.py
-        // We will make a GET to /api/flows/{flow_id}/generate which generates or retrieves
-        // Let's call /api/flows/{flow_id}/generate but we don't want to regenerate if not needed,
-        // so we fetch flow's latest code
-        const genRes = await fetch(`/api/flows/${flowId}/generate`, {
-            method: 'POST',
-            headers: getHeaders()
-        });
-        const data = await genRes.json();
-        els.codeEditorBlock.textContent = data.code || '# Generated code placeholder';
+        const res = await fetch(`/api/flows/${flowId}/script`);
+        const data = await res.json();
+        if (data.exists && data.code) {
+            els.codeEditorBlock.textContent = data.code;
+        } else {
+            els.codeEditorBlock.textContent = '# No script generated yet. Click "Generate Script" to create one.';
+        }
     } catch (e) {
         els.codeEditorBlock.textContent = '# Failed to load code or code not generated yet.';
     }
 }
 
-// Save Script Changes
+// Save Script Changes (persists the edited script to disk)
 async function saveScriptChanges() {
     if (!state.activeFlowId) return;
-    // For simplicity, changes are saved locally. (Backend handles script rewrite)
-    // We can implement a direct write endpoint if needed, or save mock.
-    // Let's show alert
-    showToast('Script saved.');
+
+    const code = els.codeEditorBlock.innerText;
+    if (!code || !code.trim() || code.trim().startsWith('# No script generated')) {
+        showToast('Nothing to save. Generate a script first.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/flows/${state.activeFlowId}/script`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to save script');
+        }
+        showToast('Script saved.');
+    } catch (e) {
+        showToast(e.message);
+    }
 }
 
-// Execute Flow Test Run
-async function executeFlow() {
+// Execute Flow Test Run.
+// repair=false -> "Run Automation": execute the script once, no self-healing.
+// repair=true  -> "Fix Script & Run": diagnose, patch, and re-run (self-healing).
+async function executeFlow(repair = false) {
     if (!state.activeFlowId) return;
-    
-    showLoading('Orchestrating test execution & self-healing runs...');
-    
+
+    showLoading(repair
+        ? 'Diagnosing failure, patching script & re-running...'
+        : 'Running automation...');
+
     try {
         const res = await fetch('/api/runs', {
             method: 'POST',
@@ -385,18 +407,25 @@ async function executeFlow() {
             body: JSON.stringify({
                 flow_id: state.activeFlowId,
                 browser: 'chromium',
-                headless: true,
-                max_repair_attempts: 3
+                // Default to headed so the UI run matches a manual run (many sites
+                // block headless). The user can opt into headless via the checkbox.
+                headless: els.chkHeadless ? els.chkHeadless.checked : false,
+                // Plain run does no repair; "Fix Script & Run" enables self-healing.
+                max_repair_attempts: repair ? 3 : 0
             })
         });
-        
+
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.detail || 'Execution failed');
         }
-        
+
         const report = await res.json();
         showToast(`Execution finished with status: ${report.status}`);
+
+        // Enable "Fix Script & Run" only when the run did not pass.
+        setFixButtonEnabled(report.status !== 'pass');
+
         await fetchRuns();
         selectRun(report.run_id);
     } catch (e) {
@@ -404,6 +433,11 @@ async function executeFlow() {
     } finally {
         hideLoading();
     }
+}
+
+// Enable/disable the "Fix Script & Run" button.
+function setFixButtonEnabled(enabled) {
+    if (els.btnFixRun) els.btnFixRun.disabled = !enabled;
 }
 
 // Select a Run from History

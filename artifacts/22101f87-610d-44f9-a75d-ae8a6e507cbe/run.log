@@ -1,0 +1,10 @@
+STDOUT:
+
+
+STDERR:
+Traceback (most recent call last):
+  File "/Users/vivekvishal/AIAccelerator/AI_Browser_Automation_Agent/scripts/generated/022be6ec-14bb-48aa-886e-dc132264fcfb.py", line 5, in <module>
+    page.goto("https://amazon.com", timeout=5000)
+    ^^^^
+NameError: name 'page' is not defined. Did you mean: 'range'?
+

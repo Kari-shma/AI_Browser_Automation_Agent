@@ -1,0 +1,9 @@
+STDOUT:
+
+
+STDERR:
+  File "/Users/vivekvishal/AIAccelerator/AI_Browser_Automation_Agent/scripts/generated/3d72e856-af82-4b1d-9b69-0d403b4b34bd.py", line 1
+    Here is the generated Playwright Python script:
+                ^^^^^^^^^
+SyntaxError: invalid syntax
+

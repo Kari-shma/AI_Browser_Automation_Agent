@@ -64,7 +64,12 @@
                         <label for="setting-base-url">Custom Base URL (Optional)</label>
                         <input type="text" id="setting-base-url" placeholder="https://api.openai.com/v1" class="form-control">
                     </div>
-                    
+
+                    <div class="form-group">
+                        <label for="setting-model">Model (Optional)</label>
+                        <input type="text" id="setting-model" placeholder="e.g. gpt-4o, meta-llama/llama-3.1-70b-instruct" class="form-control">
+                    </div>
+
                     <button id="save-settings" class="btn btn-primary btn-block">Save Configuration</button>
                 </div>
             </div>
@@ -131,6 +136,12 @@
                             <button id="btn-run-flow" class="btn btn-primary">
                                 <i class="fa-solid fa-play"></i> Run Automation
                             </button>
+                            <button id="btn-fix-run" class="btn btn-secondary" disabled title="Enabled after a run fails. Diagnoses the failure, patches the script, and re-runs.">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> Fix Script &amp; Run
+                            </button>
+                            <label class="run-option" title="Unchecked runs a visible browser (matches running the script manually); many sites block headless.">
+                                <input type="checkbox" id="chk-headless"> Headless
+                            </label>
                         </div>
                     </div>
 

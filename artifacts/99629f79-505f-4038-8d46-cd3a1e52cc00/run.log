@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.select_option: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\"#searchDropdownBox\")\n", "step_id": 5, "selector": "#searchDropdownBox"}
+
+
+STDERR:
+

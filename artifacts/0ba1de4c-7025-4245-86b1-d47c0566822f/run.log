@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.click: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\"[data-testid='ai-engineering-fellowship-link']\")\n", "step_id": 3, "selector": "[data-testid='ai-engineering-fellowship-link']"}
+
+
+STDERR:
+

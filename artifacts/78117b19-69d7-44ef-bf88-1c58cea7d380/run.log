@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.wait_for_selector: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\"[data-testid='course-link']\") to be visible\n", "step_id": 2, "selector": "[data-testid='course-link']"}
+
+
+STDERR:
+

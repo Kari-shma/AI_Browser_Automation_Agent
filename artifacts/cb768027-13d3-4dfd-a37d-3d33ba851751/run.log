@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.click: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\"#Corporate_structure\")\n", "step_id": 5, "selector": "#Corporate_structure"}
+
+
+STDERR:
+

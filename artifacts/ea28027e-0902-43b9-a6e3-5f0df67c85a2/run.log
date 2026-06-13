@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "Error", "message": "Page.click: Unexpected token \"/\" while parsing css selector \".bg-white hover:bg-[#ffffff]/30 hover:text-white text-black font-medium px-6 py-3 rounded-[2px] transition-all duration-200 text-base text-center inline-block\". Did you mean to CSS.escape it?\nCall log:\n  - waiting for .bg-white hover:bg-[#ffffff]/30 hover:text-white text-black font-medium px-6 py-3 rounded-[2px] transition-all duration-200 text-base text-center inline-block\n", "step_id": 2, "selector": ".bg-white hover:bg-[#ffffff]/30 hover:text-white text-black font-medium px-6 py-3 rounded-[2px] transition-all duration-200 text-base text-center inline-block"}
+
+
+STDERR:
+

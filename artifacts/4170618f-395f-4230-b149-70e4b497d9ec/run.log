@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.click: Timeout 5000ms exceeded.\nCall log:\n  - waiting for locator(\"#nav-hamburger-menu\")\n", "step_id": 2, "selector": "#nav-hamburger-menu"}
+
+
+STDERR:
+

@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "Error", "message": "Page.click: SyntaxError: Failed to execute 'querySelectorAll' on 'Document': '.block.text-gray-400.hover:text-white.transition-colors.text-sm' is not a valid selector.\n    at query (<anonymous>:5334:41)\n    at <anonymous>:5344:7\n    at SelectorEvaluatorImpl._cached (<anonymous>:5121:20)\n    at SelectorEvaluatorImpl._queryCSS (<anonymous>:5331:17)\n    at SelectorEvaluatorImpl._querySimple (<anonymous>:5211:19)\n    at <anonymous>:5159:29\n    at SelectorEvaluatorImpl._cached (<anonymous>:5121:20)\n    at SelectorEvaluatorImpl.query (<anonymous>:5152:19)\n    at Object.query (<anonymous>:5366:44)\n    at <anonymous>:5324:21\nCall log:\n  - waiting for locator(\".block.text-gray-400.hover:text-white.transition-colors.text-sm\")\n", "step_id": 2, "selector": ".block.text-gray-400.hover:text-white.transition-colors.text-sm"}
+
+
+STDERR:
+

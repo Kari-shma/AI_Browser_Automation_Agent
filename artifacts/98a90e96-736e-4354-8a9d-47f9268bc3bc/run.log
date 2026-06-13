@@ -1,0 +1,6 @@
+STDOUT:
+ERROR_REPORT: {"type": "timeout", "message": "Page.click: Timeout 10000ms exceeded.\nCall log:\n  - waiting for locator(\"[data-testid='course-link']\")\n", "step_id": 2, "selector": "[data-testid='course-link']"}
+
+
+STDERR:
+

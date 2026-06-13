@@ -19,8 +19,28 @@ Determine the type of error. The allowed error types are:
 - unknown
 
 Identify the affected step number (1-indexed), the selector that caused the issue (if any), and provide a confidence rating (0.0 to 1.0).
-If the error is a `broken_selector`, suggest alternative selectors that are present in the DOM snapshot. Check the attributes like id, data-testid, class, or text.
-Classify whether the repair is eligible (we only attempt repair for `broken_selector` and `timeout`).
+If the error is a `broken_selector`, suggest alternative selectors that match a REAL element in the DOM snapshot.
+- A common root cause is a FABRICATED id built from human text or an href fragment (e.g. the
+  failed selector "#Holding_companies" when the page only has a link whose text is
+  "Holding companies"). When the target is best identified by its visible label, suggest a
+  Playwright TEXT selector using SINGLE quotes so it embeds in the script's double-quoted
+  string, e.g. `text='Holding companies'` or `a:has-text('Holding companies')`.
+- Prefer, in order: real `#id`, `[data-testid='...']`, `[name='...']`, `[aria-label='...']`,
+  then `text='...'`. Never invent an attribute value that is not present in the DOM snapshot.
+
+IMPORTANT — distinguish a real timeout from an intercepted click:
+- If the log contains "intercepts pointer events", "element is visible, enabled and stable",
+  or mentions an overlay/modal/popover (e.g. a-modal-scroller, a-popover, onetrust,
+  cookie/consent banner) covering the target, the element WAS found but a blocking overlay
+  prevented the action. Do NOT classify this as a plain `timeout` whose fix is a longer wait.
+  Classify it as `timeout` (the allowed type) BUT set the explanation to clearly state an
+  overlay is intercepting the click, and put concrete dismissal hints in
+  `suggested_alternatives` — e.g. the close/accept button selector visible in the DOM
+  snapshot, "press Escape", or "use force click". This steers the repair toward dismissing
+  the overlay rather than increasing the timeout.
+
+Classify whether the repair is eligible (we attempt repair for `broken_selector` and `timeout`,
+including overlay-interception cases described above).
 
 Format the response strictly as a JSON object matching this schema:
 {
@@ -42,7 +62,8 @@ def diagnose_run(
     script_content: str,
     api_key: str,
     provider: str = "openai",
-    base_url: Optional[str] = None
+    base_url: Optional[str] = None,
+    model: Optional[str] = None
 ) -> DiagnosisReport:
     # Read the log
     log_content = ""
@@ -79,7 +100,8 @@ def diagnose_run(
         user_prompt=user_prompt,
         api_key=api_key,
         provider=provider,
-        base_url=base_url
+        base_url=base_url,
+        model=model
     )
     
     # Strip markdown if any

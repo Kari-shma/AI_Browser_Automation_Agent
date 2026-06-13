@@ -12,6 +12,7 @@ def run_orchestrated_flow(
     api_key: str,
     provider: str = "openai",
     base_url: Optional[str] = None,
+    model: Optional[str] = None,
     browser: str = "chromium",
     headless: bool = True,
     max_repair_attempts: int = 3
@@ -32,7 +33,7 @@ def run_orchestrated_flow(
     # 1. Ensure script exists, otherwise generate
     if not os.path.exists(script_path):
         print(f"Generating script for flow: {flow.flow_name}")
-        script_content = script_generator.generate_script(flow, api_key, provider, base_url)
+        script_content = script_generator.generate_script(flow, api_key, provider, base_url, model)
     else:
         with open(script_path, "r", encoding="utf-8") as f:
             script_content = f.read()
@@ -51,7 +52,7 @@ def run_orchestrated_flow(
         # Diagnose the run
         try:
             diagnosis = error_diagnosis.diagnose_run(
-                run_report, flow, script_content, api_key, provider, base_url
+                run_report, flow, script_content, api_key, provider, base_url, model
             )
             storage.save_diagnosis(diagnosis)
             print(f"Diagnosis complete: {diagnosis.error_type} - {diagnosis.explanation}")
@@ -63,7 +64,7 @@ def run_orchestrated_flow(
             # Repair script
             print("Applying code patch...")
             patched_script = adaptive_repair.repair_script(
-                flow_id, script_content, diagnosis, api_key, provider, base_url
+                flow_id, script_content, diagnosis, api_key, provider, base_url, model
             )
             script_content = patched_script
             
