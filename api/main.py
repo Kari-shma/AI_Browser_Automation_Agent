@@ -64,15 +64,18 @@ if __name__ == "__main__":
     # Auto-reload only watches SOURCE folders. The app writes generated scripts and
     # run artifacts at runtime; if the reloader watched those, it would restart the
     # server mid-run and kill in-flight requests (e.g. "Run Automation" doing nothing).
+    host = os.getenv("HOST", "127.0.0.1")
+    port = int(os.getenv("PORT", "8000"))
+    dev = os.getenv("ENV", "development") == "development"
     uvicorn.run(
         "api.main:app",
-        host="127.0.0.1",
-        port=8000,
-        reload=True,
+        host=host,
+        port=port,
+        reload=dev,
         reload_dirs=[
             os.path.join(PROJECT_ROOT, "api"),
             os.path.join(PROJECT_ROOT, "core"),
             os.path.join(PROJECT_ROOT, "agents"),
             os.path.join(PROJECT_ROOT, "static"),
-        ],
+        ] if dev else None,
     )

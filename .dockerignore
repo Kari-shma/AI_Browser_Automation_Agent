@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+db.sqlite
+artifacts/
+scripts/generated/
+*.log
+node_modules/

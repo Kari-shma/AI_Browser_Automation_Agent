@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: autoflow-ai
+    runtime: docker
+    plan: free
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: ENV
+        value: production
