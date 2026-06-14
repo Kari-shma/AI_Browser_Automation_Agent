@@ -21,11 +21,18 @@ def init_db():
         flow_id TEXT PRIMARY KEY,
         flow_name TEXT,
         url TEXT,
+        goal TEXT,
         steps_json TEXT,
         created_at TEXT,
         target_framework TEXT
     )
     """)
+    # Add goal column to existing DBs that predate this field
+    try:
+        cursor.execute("ALTER TABLE flows ADD COLUMN goal TEXT")
+        conn.commit()
+    except Exception:
+        pass  # Column already exists
     
     # Create runs table
     cursor.execute("""
@@ -76,12 +83,13 @@ def save_flow(flow: FlowSchema):
     cursor = conn.cursor()
     steps_list = [step.model_dump() for step in flow.steps]
     cursor.execute("""
-    INSERT OR REPLACE INTO flows (flow_id, flow_name, url, steps_json, created_at, target_framework)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT OR REPLACE INTO flows (flow_id, flow_name, url, goal, steps_json, created_at, target_framework)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         flow.flow_id,
         flow.flow_name,
         flow.url,
+        flow.goal,
         json.dumps(steps_list),
         flow.created_at,
         flow.target_framework
@@ -103,10 +111,25 @@ def get_flow(flow_id: str) -> Optional[FlowSchema]:
         flow_id=row["flow_id"],
         flow_name=row["flow_name"],
         url=row["url"],
+        goal=row["goal"] if "goal" in row.keys() else None,
         steps=steps,
         created_at=row["created_at"],
         target_framework=row["target_framework"]
     )
+
+def _iter_flows(rows):
+    """Generator that yields FlowSchema objects from raw DB rows one at a time."""
+    for row in rows:
+        steps = [FlowStep(**step) for step in json.loads(row["steps_json"])]
+        yield FlowSchema(
+            flow_id=row["flow_id"],
+            flow_name=row["flow_name"],
+            url=row["url"],
+            goal=row["goal"] if "goal" in row.keys() else None,
+            steps=steps,
+            created_at=row["created_at"],
+            target_framework=row["target_framework"]
+        )
 
 def get_all_flows() -> List[FlowSchema]:
     conn = get_connection()
@@ -114,19 +137,7 @@ def get_all_flows() -> List[FlowSchema]:
     cursor.execute("SELECT * FROM flows ORDER BY created_at DESC")
     rows = cursor.fetchall()
     conn.close()
-    
-    flows = []
-    for row in rows:
-        steps = [FlowStep(**step) for step in json.loads(row["steps_json"])]
-        flows.append(FlowSchema(
-            flow_id=row["flow_id"],
-            flow_name=row["flow_name"],
-            url=row["url"],
-            steps=steps,
-            created_at=row["created_at"],
-            target_framework=row["target_framework"]
-        ))
-    return flows
+    return list(_iter_flows(rows))
 
 def save_run(run: RunReport):
     conn = get_connection()

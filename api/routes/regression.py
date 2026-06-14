@@ -4,7 +4,7 @@ from core import storage
 from agents import regression_monitor
 import shutil
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 router = APIRouter()
 BASELINES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "artifacts", "baselines")
@@ -28,7 +28,7 @@ def set_baseline_endpoint(
     
     try:
         shutil.copy2(run.artifacts.screenshot, baseline_path)
-        timestamp = datetime.utcnow().isoformat() + "Z"
+        timestamp = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         storage.save_baseline(flow_id, baseline_path, timestamp)
         return {"status": "success", "baseline_path": f"/artifacts/baselines/{baseline_filename}", "updated_at": timestamp}
     except Exception as e:

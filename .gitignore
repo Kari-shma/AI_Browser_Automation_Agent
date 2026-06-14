@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+env/
+.venv/
+.env/
+
+# Database
+db.sqlite
+*.sqlite3
+*.db
+
+# Generated artifacts
+artifacts/
+scripts/generated/
+
+# Logs
+*.log
+gcm-diagnose.log
+
+# Test cache
+.pytest_cache/
+tests/__pycache__/
+tests/eval_results.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local

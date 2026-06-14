@@ -1,7 +1,7 @@
 import os
 import sys
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -27,7 +27,7 @@ class TestBrowserAutomationAgent(unittest.TestCase):
             flow_name="Login Test Scenario",
             url="https://example.com",
             steps=steps,
-            created_at=datetime.utcnow().isoformat() + "Z",
+            created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             target_framework="playwright"
         )
         

@@ -15,6 +15,7 @@ class FlowSchema(BaseModel):
     flow_id: str
     flow_name: str
     url: str
+    goal: Optional[str] = None  # original user goal, used for post-processing codegen
     steps: List[FlowStep]
     created_at: str
     target_framework: str = "playwright"

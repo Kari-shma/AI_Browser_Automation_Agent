@@ -1,6 +1,7 @@
 import os
+import numpy as np
 from PIL import Image, ImageChops, ImageDraw
-from datetime import datetime
+from datetime import datetime, timezone
 
 def compare_screenshots(
     baseline_path: str,
@@ -27,36 +28,21 @@ def compare_screenshots(
     if img1.size != img2.size:
         img2 = img2.resize(img1.size, Image.Resampling.LANCZOS)
         
-    # Generate visual difference
+    # Generate visual difference using NumPy for fast pixel-level comparison
     diff = ImageChops.difference(img1, img2)
-    
-    # Get bounding box of differences
-    bbox = diff.getbbox()
-    
-    # Calculate difference percentage
-    # We can count non-zero pixels in the diff
-    non_zero_pixels = 0
-    diff_pixels = diff.load()
-    width, height = diff.size
-    total_pixels = width * height
-    
-    # Create diff image for display
-    # We overlay the diff on top of the original image
-    highlight_img = img1.copy()
-    draw = ImageDraw.Draw(highlight_img)
-    
-    # Check pixels that have a difference above a small noise threshold
-    for y in range(height):
-        for x in range(width):
-            r, g, b = diff_pixels[x, y]
-            # If the difference in any channel is > 10 (filter out minor compression artifacts)
-            if r > 10 or g > 10 or b > 10:
-                non_zero_pixels += 1
-                # Draw red overlay with low opacity by drawing a point
-                # (to keep it simple without complex pixel access, we can paint a red pixel directly on highlight_img)
-                highlight_img.putpixel((x, y), (255, 0, 0))
-                
+
+    # Convert diff to NumPy array (H x W x 3) for vectorised operations
+    diff_arr = np.array(diff)                          # shape: (H, W, 3)
+    mask = diff_arr.max(axis=2) > 10                   # True where any channel differs by >10
+
+    non_zero_pixels = int(np.count_nonzero(mask))
+    total_pixels = diff_arr.shape[0] * diff_arr.shape[1]
     diff_percentage = (non_zero_pixels / total_pixels) * 100
+
+    # Build highlighted diff image: paint changed pixels red
+    highlight_arr = np.array(img1.copy())
+    highlight_arr[mask] = [255, 0, 0]                 # vectorised red paint
+    highlight_img = Image.fromarray(highlight_arr.astype(np.uint8))
     
     status = "pass"
     if diff_percentage > threshold:
@@ -69,5 +55,5 @@ def compare_screenshots(
         "diff_percentage": round(diff_percentage, 2),
         "status": status,
         "diff_image_path": diff_image_path if diff_percentage > 0 else None,
-        "timestamp": datetime.utcnow().isoformat() + "Z"
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     }

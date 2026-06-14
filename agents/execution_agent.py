@@ -4,7 +4,7 @@ import time
 import subprocess
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Tuple, Optional
 from core.schema import RunReport, RunArtifacts, RunError
 
@@ -35,6 +35,8 @@ def execute_run(flow_id: str, script_content: str, browser: str = "chromium", he
     ]
     if headless:
         cmd.append("--headless")
+    else:
+        cmd.append("--watch-live")
         
     start_time = time.time()
     
@@ -96,5 +98,5 @@ def execute_run(flow_id: str, script_content: str, browser: str = "chromium", he
         browser=browser,
         artifacts=artifacts,
         error=error,
-        timestamp=datetime.utcnow().isoformat() + "Z"
+        timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     )

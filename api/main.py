@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from api.routes import flows, runs, regression
+from api.routes import flows, runs, regression, analytics
 
 app = FastAPI(
     title="Browser Automation AI Agent",
@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(flows.router, prefix="/api/flows", tags=["flows"])
 app.include_router(runs.router, prefix="/api/runs", tags=["runs"])
 app.include_router(regression.router, prefix="/api/regression", tags=["regression"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 
 # Define paths
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")

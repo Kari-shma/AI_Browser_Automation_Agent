@@ -4,6 +4,7 @@ from typing import Optional
 import json
 from core.schema import RunReport, DiagnosisReport, FlowSchema
 from core.llm import call_llm
+from agents.rag_context import retrieve_relevant_dom
 
 SYSTEM_PROMPT = """
 You are the Error Diagnosis Agent. Your job is to analyze browser automation script failures.
@@ -50,22 +51,26 @@ def diagnose_run(
         with open(run.artifacts.log, "r", encoding="utf-8") as f:
             log_content = f.read()
             
-    # Read DOM snapshot
+    # Read DOM snapshot — use RAG retrieval to send only the most relevant chunks
     dom_content = ""
     if run.artifacts.dom_snapshot and os.path.exists(run.artifacts.dom_snapshot):
         with open(run.artifacts.dom_snapshot, "r", encoding="utf-8") as f:
-            # Truncate DOM snapshot to keep LLM context reasonable (e.g. first 50,000 characters)
-            dom_content = f.read()[:50000]
+            raw_dom = f.read()
+        # Build a query from the error context for targeted chunk retrieval
+        error_query = ""
+        if run.error:
+            error_query = f"{run.error.error_type} {run.error.message} step {run.error.step_id}"
+        dom_content = retrieve_relevant_dom(raw_dom, query=error_query or "error selector failed")
             
     user_prompt = f"""
     Flow Name: {flow.flow_name}
-    Steps: {json.dumps([step.dict() for step in flow.steps], indent=2)}
+    Steps: {json.dumps([step.model_dump() for step in flow.steps], indent=2)}
     
     Original Generated Script:
     {script_content}
     
     Execution Run Error:
-    {json.dumps(run.error.dict() if run.error else {}, indent=2)}
+    {json.dumps(run.error.model_dump() if run.error else {}, indent=2)}
     
     Run Logs:
     {log_content}
@@ -79,18 +84,11 @@ def diagnose_run(
         user_prompt=user_prompt,
         api_key=api_key,
         provider=provider,
-        base_url=base_url
+        base_url=base_url,
+        response_format={"type": "json_object"}
     )
-    
-    # Strip markdown if any
-    clean_text = response_text.strip()
-    if clean_text.startswith("```json"):
-        clean_text = clean_text[7:]
-    if clean_text.endswith("```"):
-        clean_text = clean_text[:-3]
-    clean_text = clean_text.strip()
-    
-    diag_data = json.loads(clean_text)
+
+    diag_data = json.loads(response_text.strip())
     
     return DiagnosisReport(
         diagnosis_id=str(uuid.uuid4()),

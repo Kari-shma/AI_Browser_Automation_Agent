@@ -2,7 +2,7 @@ from fastapi import APIRouter, Header, HTTPException, Body, Query
 from typing import Optional, List
 from core import storage, orchestrator
 from core.schema import RunReport, DiagnosisReport
-from agents import adaptive_repair, execution_agent
+from agents import adaptive_repair, execution_agent, parallel_runner
 import os
 
 router = APIRouter()
@@ -34,6 +34,37 @@ def run_flow_endpoint(
         return report
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Execution orchestration failed: {str(e)}")
+
+@router.post("/batch", response_model=List[RunReport])
+def run_flows_batch(
+    flow_ids: List[str] = Body(..., embed=True),
+    browser: str = Body("chromium", embed=True),
+    headless: bool = Body(True, embed=True),
+    max_repair_attempts: int = Body(3, embed=True),
+    max_workers: int = Body(4, embed=True),
+    x_api_key: Optional[str] = Header(None),
+    x_api_provider: Optional[str] = Header("openai"),
+    x_api_base_url: Optional[str] = Header(None)
+):
+    """Run multiple flows in parallel using a thread pool."""
+    if not x_api_key:
+        raise HTTPException(status_code=400, detail="Missing API Key in headers (X-API-Key)")
+    if not flow_ids:
+        raise HTTPException(status_code=400, detail="flow_ids list must not be empty")
+    try:
+        reports = parallel_runner.run_flows_in_parallel(
+            flow_ids=flow_ids,
+            api_key=x_api_key,
+            provider=x_api_provider,
+            base_url=x_api_base_url,
+            browser=browser,
+            headless=headless,
+            max_repair_attempts=max_repair_attempts,
+            max_workers=max_workers
+        )
+        return reports
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Batch execution failed: {str(e)}")
 
 @router.get("", response_model=List[RunReport])
 def list_runs(flow_id: Optional[str] = Query(None)):

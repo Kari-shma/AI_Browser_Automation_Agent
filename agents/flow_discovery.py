@@ -1,11 +1,11 @@
 import uuid
-import re
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
+from urllib.parse import urljoin
 import json
 from playwright.sync_api import sync_playwright
 from core.schema import FlowSchema, FlowStep
-from core.llm import call_llm
+from core.llm import call_llm, call_llm_langchain, call_llm_with_retry
 
 # ── Intent detection ──────────────────────────────────────────────────────────
 
@@ -157,10 +157,10 @@ Rules:
 
 SCRAPE_SYSTEM_PROMPT = """
 You are the Flow Discovery Agent for a browser automation tool.
-Given data elements sampled from a web page and a scraping goal, produce flow steps that EXTRACT and PRINT data.
+The browser has ALREADY navigated to the correct page. Your only job is to describe how to extract data.
 
-Allowed actions: navigate, scrape, assert
-- scrape: extract a list of items from repeating elements and print as JSON.
+Allowed actions: scrape, assert
+IMPORTANT: Do NOT include any navigate steps. Navigation is handled separately by the system.
 
 Return strictly this JSON (no markdown):
 {
@@ -168,10 +168,10 @@ Return strictly this JSON (no markdown):
   "steps": [
     {
       "step_id": 1,
-      "action": "navigate|scrape|assert",
+      "action": "scrape|assert",
       "selector": "CSS selector for the repeating container, or null",
       "selector_strategy": "css",
-      "value": "comma-separated field descriptors for scrape action, or null",
+      "value": "field descriptors JSON string for scrape action, or null",
       "description": "what this step extracts",
       "timeout_ms": 15000
     }
@@ -182,6 +182,27 @@ For a scrape step, set:
 - selector: the repeating container CSS selector (e.g. "article.product_pod")
 - value: field descriptors as JSON string: {"field_name": "child_css_selector_or_@attr"}
   e.g. {"title": "h3 > a@title", "price": "p.price_color", "rating": "p.star-rating@class"}
+
+Example:
+DOM sample from a books listing page:
+  container: "article.product_pod"
+  field_samples: [{"tag":"a","classes":"","text":"A Light in the Attic","title_attr":"A Light in the Attic"},
+                  {"tag":"p","classes":"price_color","text":"£51.77"},
+                  {"tag":"p","classes":"star-rating Three","text":""}]
+
+Correct output:
+{
+  "flow_name": "Scrape book listings",
+  "steps": [{
+    "step_id": 1,
+    "action": "scrape",
+    "selector": "article.product_pod",
+    "selector_strategy": "css",
+    "value": "{\\"title\\": \\"h3 > a@title\\", \\"price\\": \\"p.price_color\\", \\"rating\\": \\"p.star-rating@class\\"}",
+    "description": "Extract title, price, rating from each book card",
+    "timeout_ms": 15000
+  }]
+}
 
 Return raw JSON only.
 """
@@ -228,10 +249,83 @@ When you see action = "scrape":
     print(json.dumps({"total": len(items), "items": items}, indent=2, ensure_ascii=False))
 """
 
+# ── Goal-driven navigation ────────────────────────────────────────────────────
+
+NAV_RESOLUTION_PROMPT = """
+You are a browser navigation assistant. Given a list of links on a page and a user goal,
+decide whether the user needs to navigate to a different page before scraping.
+
+If the goal mentions a specific category, section, filter, or sub-page that is NOT the current page,
+return the href of the single link the user should navigate to.
+
+If the user can scrape directly from the current page, return null.
+
+Respond with ONLY a JSON object — no markdown:
+{"nav_href": "/path/to/subpage" | null, "reason": "brief explanation"}
+
+Example:
+Goal: "Scrape the top 3 highest priced books from the Fiction category"
+Links include: {"text": "Fiction", "href": "/catalogue/category/books/fiction_10/index.html"}
+→ {"nav_href": "/catalogue/category/books/fiction_10/index.html", "reason": "Goal specifies Fiction category; Fiction link leads to that page"}
+
+If scraping from the current page is sufficient:
+→ {"nav_href": null, "reason": "Current page already shows the required data"}
+"""
+
+def _resolve_navigation(page, url: str, goal: str, api_key: str, provider: str, base_url) -> Optional[str]:
+    """
+    Ask the LLM whether the goal requires navigating to a sub-page first.
+    Returns an absolute URL to navigate to, or None if already on the right page.
+    Uses page.goto instead of page.click to avoid selector / special-character failures.
+    """
+    links = page.evaluate("""
+        () => Array.from(document.querySelectorAll('a[href]'))
+            .filter(a => a.innerText.trim())
+            .slice(0, 80)
+            .map(a => ({
+                text: a.innerText.trim().substring(0, 60),
+                href: a.getAttribute('href')
+            }))
+    """)
+
+    user_prompt = f"""
+User Goal: {goal}
+
+Links available on the current page:
+{json.dumps(links, indent=2)}
+
+Does the goal require navigating to a sub-page (e.g. a category, filter, or section)?
+If yes, return the href of the correct link. If no, return null for nav_href.
+"""
+    try:
+        response = call_llm_with_retry(
+            system_prompt=NAV_RESOLUTION_PROMPT,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            provider=provider,
+            base_url=base_url,
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(response.strip())
+        nav_href = data.get("nav_href")
+        reason = data.get("reason", "")
+        print(f"[flow_discovery] Nav resolution: nav_href={nav_href!r} reason={reason!r}")
+        if nav_href:
+            return urljoin(url, nav_href)
+        return None
+    except Exception as e:
+        print(f"[flow_discovery] Nav resolution failed: {e}")
+        return None
+
+
 # ── Main discovery function ───────────────────────────────────────────────────
 
 def discover_flow(url: str, goal: str, api_key: str, provider: str = "openai", base_url: Optional[str] = None) -> FlowSchema:
     intent = detect_intent(goal)
+    landed_url = url  # tracks where we actually ended up during discovery
+    dom_data = {}
+    flow_data = {"flow_name": "Discovered Flow"}
+    steps = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -240,16 +334,29 @@ def discover_flow(url: str, goal: str, api_key: str, provider: str = "openai", b
             page.goto(url, wait_until="networkidle", timeout=30000)
 
             if intent == "scrape":
+                # Ask LLM if we need to navigate to a sub-page — use goto, not click
+                abs_nav_url = _resolve_navigation(page, url, goal, api_key, provider, base_url)
+                if abs_nav_url:
+                    try:
+                        page.goto(abs_nav_url, wait_until="networkidle", timeout=20000)
+                        landed_url = page.url
+                        print(f"[flow_discovery] Navigated to: {landed_url}")
+                    except Exception as e:
+                        print(f"[flow_discovery] Could not navigate to {abs_nav_url!r}: {e}")
+
+                # Extract DOM from the page we actually landed on
                 dom_data = extract_data_elements(page)
                 system_prompt = SCRAPE_SYSTEM_PROMPT
                 user_prompt = f"""
 Target URL: {url}
 User Goal: {goal}
+Current page (data extracted from): {landed_url}
 
 Sampled repeating data elements from the page:
 {json.dumps(dom_data, indent=2)}
 
-Build scrape steps to extract the requested data. First step: navigate to {url}.
+Build scrape steps to extract the requested data from the elements above.
+Remember: do NOT include navigate steps — they are handled automatically.
 """
             elif intent == "monitor":
                 dom_data = extract_interactive_elements(page)
@@ -275,51 +382,79 @@ Interactive elements on the page:
 
 Build automation steps to complete the goal. First step: navigate to {url}.
 """
+
+            # Call LLM with retry and JSON mode enforcement
+            response_text = call_llm_with_retry(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                api_key=api_key,
+                provider=provider,
+                base_url=base_url,
+                response_format={"type": "json_object"}
+            )
+            flow_data = json.loads(response_text.strip())
+
+            def _iter_steps(raw_steps):
+                """Generator that yields FlowStep objects from raw LLM step dicts."""
+                for idx, s in enumerate(raw_steps):
+                    yield FlowStep(
+                        step_id=s.get("step_id", idx + 1),
+                        action=s.get("action"),
+                        selector=s.get("selector"),
+                        selector_strategy=s.get("selector_strategy", "css"),
+                        value=s.get("value"),
+                        description=s.get("description"),
+                        timeout_ms=s.get("timeout_ms", 5000)
+                    )
+
+            steps = list(_iter_steps(flow_data.get("steps", [])))
+
+            # For scrape flows: always inject navigation steps deterministically.
+            # The LLM is forbidden from generating navigate steps; this is the only
+            # source of navigation — guaranteeing correct URLs from the live browser.
+            if intent == "scrape":
+                non_nav_steps = [s for s in steps if s.action not in ("navigate", "click")]
+                fixed_steps = [
+                    FlowStep(step_id=1, action="navigate", value=url,
+                             description=f"Navigate to {url}", timeout_ms=15000),
+                ]
+                if landed_url != url:
+                    fixed_steps.append(
+                        FlowStep(step_id=2, action="navigate", value=landed_url,
+                                 description=f"Navigate to target page: {landed_url}", timeout_ms=15000)
+                    )
+                for i, s in enumerate(non_nav_steps, start=len(fixed_steps) + 1):
+                    s.step_id = i
+                    fixed_steps.append(s)
+                steps = fixed_steps
+
+                # Validate that the scrape selector actually matches elements on the live page
+                for step in steps:
+                    if step.action == "scrape" and step.selector:
+                        try:
+                            count = page.locator(step.selector).count()
+                            print(f"[flow_discovery] Selector {step.selector!r} matched {count} elements")
+                            if count == 0:
+                                fallback = dom_data.get("container") if isinstance(dom_data, dict) else None
+                                if fallback and fallback != step.selector:
+                                    print(f"[flow_discovery] Falling back to DOM container: {fallback!r}")
+                                    step.selector = fallback
+                        except Exception as e:
+                            print(f"[flow_discovery] Selector validation error: {e}")
+
         except Exception as e:
-            print(f"Error extracting DOM: {e}")
-            dom_data = []
-            system_prompt = AUTOMATE_SYSTEM_PROMPT
-            user_prompt = f"Target URL: {url}\nUser Goal: {goal}\nNo DOM data available."
+            print(f"[flow_discovery] Error during discovery: {e}")
+            steps = [FlowStep(step_id=1, action="navigate", value=url,
+                              description=f"Navigate to {url}", timeout_ms=15000)]
         finally:
             browser.close()
-
-    response_text = call_llm(
-        system_prompt=system_prompt,
-        user_prompt=user_prompt,
-        api_key=api_key,
-        provider=provider,
-        base_url=base_url
-    )
-
-    # Strip markdown fences
-    clean_text = response_text.strip()
-    if clean_text.startswith("```json"):
-        clean_text = clean_text[7:]
-    elif clean_text.startswith("```"):
-        clean_text = clean_text[3:]
-    if clean_text.endswith("```"):
-        clean_text = clean_text[:-3]
-    clean_text = clean_text.strip()
-
-    flow_data = json.loads(clean_text)
-
-    steps = []
-    for idx, s in enumerate(flow_data.get("steps", [])):
-        steps.append(FlowStep(
-            step_id=s.get("step_id", idx + 1),
-            action=s.get("action"),
-            selector=s.get("selector"),
-            selector_strategy=s.get("selector_strategy", "css"),
-            value=s.get("value"),
-            description=s.get("description"),
-            timeout_ms=s.get("timeout_ms", 5000)
-        ))
 
     return FlowSchema(
         flow_id=str(uuid.uuid4()),
         flow_name=flow_data.get("flow_name", "Discovered Flow"),
         url=url,
+        goal=goal,
         steps=steps,
-        created_at=datetime.utcnow().isoformat() + "Z",
+        created_at=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         target_framework="playwright"
     )
