@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import subprocess
 import json
@@ -27,7 +28,7 @@ def execute_run(flow_id: str, script_content: str, browser: str = "chromium", he
     log_path = os.path.join(run_dir, "run.log")
     
     cmd = [
-        "python",
+        sys.executable,
         script_path,
         "--screenshot", screenshot_path,
         "--snapshot", snapshot_path

@@ -1,60 +1,221 @@
-import os
+import re
 import json
 from typing import Optional
 from core.schema import FlowSchema
 from core.llm import call_llm
 
-SYSTEM_PROMPT = """
-You are the Script Generator Agent. Your task is to output a fully executable, standalone Playwright Python script based on a given FlowSchema.
+STEPS_SYSTEM_PROMPT = """
+You are a Playwright automation expert. Given a list of flow steps, output ONLY the Python statements that execute those steps — nothing else.
 
-Requirements for the generated Python script:
-1. Use the sync Playwright API (`from playwright.sync_api import sync_playwright`).
-2. Implement argument parsing to support `--headless` (flag), `--screenshot` (path to save screenshot on completion/failure), and `--snapshot` (path to save HTML DOM snapshot on completion/failure).
-3. The script must execute the steps sequentially:
-   - navigate: `page.goto(value, timeout=timeout_ms)`
-   - click: `page.click(selector, timeout=timeout_ms)`
-   - fill: `page.fill(selector, value, timeout=timeout_ms)`
-   - select: `page.select_option(selector, value, timeout=timeout_ms)`
-   - hover: `page.hover(selector, timeout=timeout_ms)`
-   - assert: Perform standard assertions (e.g. check current URL or content) and throw `AssertionError` if condition fails.
-4. Annotate each step with a comment: `# STEP {step_id}: {description}`
-5. Wrap the execution in a try-except block. If ANY step fails:
-   - Capture a screenshot if the `--screenshot` arg is provided.
-   - Capture a DOM snapshot (HTML file) if the `--snapshot` arg is provided.
-   - Print a structured JSON error string to standard error or standard output on a single line starting with "ERROR_REPORT:" followed by the JSON block:
-     `ERROR_REPORT: {"type": "type of error", "message": "error description", "step_id": failed_step_id, "selector": "selector_used_or_null"}`
-   - Exit with code 1.
-6. If the script succeeds, exit with code 0.
+Rules:
+- Output raw Python lines only. No imports, no functions, no try/except, no argparse, no browser setup.
+- Use the variable `page` (already available in scope).
+- Precede each step with a comment: # STEP {step_id}: {description}
+- Action mappings:
+    navigate  -> page.goto("{value}", timeout={timeout_ms})
+    fill      -> page.fill("{selector}", "{value}", timeout={timeout_ms})
+    click     -> page.click("{selector}", timeout={timeout_ms})
+    select    -> page.select_option("{selector}", "{value}", timeout={timeout_ms})
+    hover     -> page.hover("{selector}", timeout={timeout_ms})
+    assert    -> use page.locator("{selector}").text_content().strip() or page.url
+                 ALWAYS use `in` for text checks, never `==`
+                 e.g.: assert "expected text" in page.locator("{selector}").text_content().strip()
+    scrape    -> The step's value field is a JSON string describing fields.
+                 Generate a loop using page.locator("{selector}").all(), extract each field,
+                 build a list of dicts, and print as JSON.
+                 For "@attr" fields use .get_attribute("attr"), for plain selectors use .text_content()
+                 e.g.:
+                   items = []
+                   for item in page.locator("{selector}").all():
+                       items.append({
+                           "title": (item.locator("h3 > a").get_attribute("title") or "").strip(),
+                           "price": (item.locator("p.price_color").text_content() or "").strip(),
+                       })
+                   print(json.dumps({"total": len(items), "items": items}, indent=2, ensure_ascii=False))
 
-Output ONLY valid, compilable Python code. Do not include markdown blocks (like ```python) or extra explanation text.
+Output ONLY the step lines. No markdown, no explanation.
 """
 
-def generate_script(flow: FlowSchema, api_key: str, provider: str = "openai", base_url: Optional[str] = None) -> str:
-    user_prompt = f"""
-    Generate a Playwright Python script for the following flow:
-    
-    Flow ID: {flow.flow_id}
-    Flow Name: {flow.flow_name}
-    Flow Steps:
-    {json.dumps([step.dict() for step in flow.steps], indent=2)}
+SCRIPT_TEMPLATE = '''\
+import sys
+import json
+import argparse
+from playwright.sync_api import sync_playwright
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--screenshot", type=str)
+    parser.add_argument("--snapshot", type=str)
+    args = parser.parse_args()
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=args.headless)
+        page = browser.new_context().new_page()
+        current_step_id = None
+
+        try:
+{steps}
+
+            # Save artifacts on success
+            if args.screenshot:
+                page.screenshot(path=args.screenshot, full_page=True)
+            if args.snapshot:
+                with open(args.snapshot, "w", encoding="utf-8") as f:
+                    f.write(page.content())
+            sys.exit(0)
+
+        except Exception as e:
+            if args.screenshot:
+                try:
+                    page.screenshot(path=args.screenshot)
+                except Exception:
+                    pass
+            if args.snapshot:
+                try:
+                    with open(args.snapshot, "w", encoding="utf-8") as f:
+                        f.write(page.content())
+                except Exception:
+                    pass
+            print(
+                "ERROR_REPORT: " + json.dumps({{
+                    "type": type(e).__name__,
+                    "message": str(e),
+                    "step_id": current_step_id,
+                    "selector": None
+                }}),
+                file=sys.stderr
+            )
+            sys.exit(1)
+
+        finally:
+            browser.close()
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def _inject_step_tracker(steps_block: str) -> str:
+    lines = steps_block.splitlines()
+    result = []
+    for line in lines:
+        match = re.match(r'(\s*)# STEP (\d+):', line)
+        if match:
+            indent = match.group(1)
+            step_num = match.group(2)
+            result.append(f"{indent}current_step_id = {step_num}")
+        result.append(line)
+    return "\n".join(result)
+
+
+def _build_scrape_step_code(step) -> str:
     """
-    
-    code = call_llm(
-        system_prompt=SYSTEM_PROMPT,
-        user_prompt=user_prompt,
-        api_key=api_key,
-        provider=provider,
-        base_url=base_url
+    Deterministically generate a scraping loop from a scrape-action step.
+    Returns unindented lines — the caller handles indentation.
+    """
+    container = step.selector or "article"
+    try:
+        fields = json.loads(step.value or "{}")
+    except (json.JSONDecodeError, TypeError):
+        fields = {}
+
+    lines = [
+        f"# STEP {step.step_id}: {step.description or 'Scrape data'}",
+        f"page.wait_for_selector({repr(container)}, timeout={step.timeout_ms})",
+        "items = []",
+        f"for item in page.locator({repr(container)}).all():",
+        "    items.append({"
+    ]
+
+    for field_name, selector_str in fields.items():
+        selector_str = str(selector_str)
+        if "@" in selector_str:
+            css, attr = selector_str.rsplit("@", 1)
+            css = css.strip()
+            if attr == "class":
+                # Strip the element's own base class (e.g. "star-rating Three" -> "Three")
+                lines.append(
+                    f'        {repr(field_name)}: " ".join('
+                    f'(item.locator({repr(css)}).get_attribute("class") or "").split()[1:]),'
+                )
+            else:
+                lines.append(
+                    f'        {repr(field_name)}: (item.locator({repr(css)}).get_attribute({repr(attr)}) or "").strip(),'
+                )
+        else:
+            lines.append(f'        {repr(field_name)}: (item.locator({repr(selector_str)}).text_content() or "").strip(),')
+
+    lines += [
+        "    })",
+        'print(json.dumps({"total": len(items), "items": items}, indent=2, ensure_ascii=False))',
+    ]
+
+    return "\n".join(lines)
+
+
+def generate_script(flow: FlowSchema, api_key: str, provider: str = "openai", base_url: Optional[str] = None) -> str:
+    # Check if any step uses the scrape action
+    has_scrape = any(s.action == "scrape" for s in flow.steps)
+
+    if has_scrape:
+        # Build steps deterministically — no LLM needed for scrape steps
+        step_blocks = []
+        for step in flow.steps:
+            if step.action == "navigate":
+                block = (
+                    f"# STEP {step.step_id}: {step.description or 'Navigate'}\n"
+                    f"page.goto({repr(step.value or flow.url)}, timeout={step.timeout_ms})"
+                )
+            elif step.action == "scrape":
+                block = _build_scrape_step_code(step)
+            elif step.action == "assert":
+                sel = step.selector or ""
+                val = step.value or ""
+                block = (
+                    f"# STEP {step.step_id}: {step.description or 'Assert'}\n"
+                    f"assert {repr(val)} in page.locator({repr(sel)}).text_content().strip()"
+                )
+            else:
+                # click, fill, hover, select — delegate to LLM for this single step
+                block = f"# STEP {step.step_id}: {step.description or step.action}"
+
+            step_blocks.append(block)
+
+        raw_steps = "\n\n".join(step_blocks)
+    else:
+        # Standard automation/monitor flow — ask LLM for step lines only
+        user_prompt = f"""
+Flow Name: {flow.flow_name}
+Steps:
+{json.dumps([step.model_dump() for step in flow.steps], indent=2)}
+
+Output only the step execution lines (no imports, no functions, no boilerplate).
+"""
+        raw_steps = call_llm(
+            system_prompt=STEPS_SYSTEM_PROMPT,
+            user_prompt=user_prompt,
+            api_key=api_key,
+            provider=provider,
+            base_url=base_url
+        )
+
+        # Strip markdown fences
+        raw_steps = raw_steps.strip()
+        if raw_steps.startswith("```python"):
+            raw_steps = raw_steps[9:]
+        elif raw_steps.startswith("```"):
+            raw_steps = raw_steps[3:]
+        if raw_steps.endswith("```"):
+            raw_steps = raw_steps[:-3]
+        raw_steps = raw_steps.strip()
+
+    # Indent to sit inside the try block (12 spaces)
+    indented_steps = "\n".join(
+        "            " + line if line.strip() else ""
+        for line in raw_steps.splitlines()
     )
-    
-    # Strip markdown if any
-    code = code.strip()
-    if code.startswith("```python"):
-        code = code[9:]
-    elif code.startswith("```"):
-        code = code[3:]
-        
-    if code.endswith("```"):
-        code = code[:-3]
-        
-    return code.strip()
+
+    indented_steps = _inject_step_tracker(indented_steps)
+
+    return SCRIPT_TEMPLATE.format(steps=indented_steps)

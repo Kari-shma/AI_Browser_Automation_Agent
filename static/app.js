@@ -60,7 +60,9 @@ const els = {
     imgDiff: document.getElementById('img-diff'),
     
     loadingOverlay: document.getElementById('loading-overlay'),
-    loadingText: document.getElementById('loading-text')
+    loadingText: document.getElementById('loading-text'),
+
+    watchLive: document.getElementById('chk-watch-live')
 };
 
 // Init app
@@ -77,6 +79,21 @@ function loadSettings() {
     els.settingApiKey.value = localStorage.getItem('apiKey') || '';
     els.settingBaseUrl.value = localStorage.getItem('baseUrl') || '';
     toggleBaseUrlField();
+    updateHeaderStatus();
+}
+
+function updateHeaderStatus() {
+    const apiKey = localStorage.getItem('apiKey');
+    const provider = localStorage.getItem('provider') || 'openai';
+    const el = document.getElementById('header-status');
+    const textEl = document.getElementById('header-status-text');
+    if (apiKey) {
+        el.className = 'header-status-indicator configured';
+        textEl.textContent = `${provider} connected`;
+    } else {
+        el.className = 'header-status-indicator unconfigured';
+        textEl.textContent = 'No API key';
+    }
 }
 
 function toggleBaseUrlField() {
@@ -112,7 +129,8 @@ function bindEvents() {
         localStorage.setItem('apiKey', els.settingApiKey.value);
         localStorage.setItem('baseUrl', els.settingBaseUrl.value);
         els.settingsModal.style.display = 'none';
-        showToast('Settings saved.');
+        showToast('Settings saved.', 'success');
+        updateHeaderStatus();
     });
     els.settingProvider.addEventListener('change', toggleBaseUrlField);
     
@@ -156,9 +174,18 @@ function hideLoading() {
     els.loadingOverlay.style.display = 'none';
 }
 
-// Show message toasts
-function showToast(msg) {
-    alert(msg); // Keep it native and simple
+// Show non-blocking toast notifications
+function showToast(msg, type = 'info') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = msg;
+    container.appendChild(toast);
+
+    setTimeout(() => {
+        toast.classList.add('toast-out');
+        toast.addEventListener('animationend', () => toast.remove(), { once: true });
+    }, 3500);
 }
 
 // Fetch Flows List
@@ -244,6 +271,7 @@ function selectFlow(flowId) {
     els.flowDetailCard.style.display = 'flex';
     
     els.detailFlowName.textContent = flow.flow_name;
+    els.detailFrameworkBadge.textContent = flow.target_framework || 'playwright';
     els.detailUrl.textContent = flow.url;
     els.detailUrl.href = flow.url;
     els.detailCreated.textContent = `Discovered at: ${new Date(flow.created_at).toLocaleString()}`;
@@ -270,8 +298,8 @@ function selectFlow(flowId) {
 
 // Trigger E2E Flow Discovery
 async function triggerDiscovery() {
-    const url = els.inputUrl.value.strip ? els.inputUrl.value.strip() : els.inputUrl.value;
-    const goal = els.inputGoal.value.strip ? els.inputGoal.value.strip() : els.inputGoal.value;
+    const url = els.inputUrl.value.trim();
+    const goal = els.inputGoal.value.trim();
     
     if (!url || !goal) {
         showToast('Please enter both Starting URL and Goal description.');
@@ -299,11 +327,11 @@ async function triggerDiscovery() {
         }
         
         const flow = await response.json();
-        showToast('Flow discovered successfully!');
+        showToast('Flow discovered successfully!', 'success');
         await fetchFlows();
         selectFlow(flow.flow_id);
     } catch (e) {
-        showToast(e.message);
+        showToast(e.message, 'error');
     } finally {
         hideLoading();
     }
@@ -326,58 +354,75 @@ async function generateScript() {
             throw new Error(err.detail || 'Failed to generate script');
         }
         
-        showToast('Script generated successfully!');
+        showToast('Script generated successfully!', 'success');
         els.tabBtnScript.click(); // switch to script tab
     } catch (e) {
-        showToast(e.message);
+        showToast(e.message, 'error');
     } finally {
         hideLoading();
     }
 }
 
-// Load Script Content
+// Load Script Content (reads from disk, does NOT call LLM)
 async function loadScript(flowId) {
+    if (!flowId) return;
+    els.codeEditorBlock.textContent = '# Loading...';
     try {
-        els.codeEditorBlock.textContent = '# Loading script...';
-        const res = await fetch(`/api/flows/${flowId}`);
-        const flow = await res.json();
-        
-        // Fetch generated script details
-        const scriptRes = await fetch(`/api/runs?flow_id=${flowId}`);
-        const runs = await scriptRes.json();
-        
-        // Try to read code via dynamic API endpoint or fallback helper (let's assume it returned success in generate and is saved)
-        // For editing, let's load what's generated. We can define a tiny route if needed, or fallback.
-        // Let's implement a quick API fetch if possible, or read the generated.py
-        // We will make a GET to /api/flows/{flow_id}/generate which generates or retrieves
-        // Let's call /api/flows/{flow_id}/generate but we don't want to regenerate if not needed,
-        // so we fetch flow's latest code
-        const genRes = await fetch(`/api/flows/${flowId}/generate`, {
-            method: 'POST',
-            headers: getHeaders()
-        });
-        const data = await genRes.json();
-        els.codeEditorBlock.textContent = data.code || '# Generated code placeholder';
+        const res = await fetch(`/api/flows/${flowId}/script`);
+        if (res.status === 404) {
+            els.codeEditorBlock.textContent = '# No script generated yet.\n# Click "Generate Script" from the Flow Steps tab.';
+            return;
+        }
+        if (!res.ok) throw new Error('Failed to load script');
+        const data = await res.json();
+        els.codeEditorBlock.textContent = data.code;
     } catch (e) {
-        els.codeEditorBlock.textContent = '# Failed to load code or code not generated yet.';
+        els.codeEditorBlock.textContent = '# Failed to load script.';
     }
 }
 
 // Save Script Changes
 async function saveScriptChanges() {
     if (!state.activeFlowId) return;
-    // For simplicity, changes are saved locally. (Backend handles script rewrite)
-    // We can implement a direct write endpoint if needed, or save mock.
-    // Let's show alert
-    showToast('Script saved.');
+    const code = els.codeEditorBlock.textContent;
+    try {
+        const res = await fetch(`/api/flows/${state.activeFlowId}/script`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+        if (!res.ok) throw new Error('Save failed');
+        showToast('Script saved successfully.', 'success');
+    } catch (e) {
+        showToast('Failed to save script.', 'error');
+    }
 }
 
 // Execute Flow Test Run
 async function executeFlow() {
     if (!state.activeFlowId) return;
-    
-    showLoading('Orchestrating test execution & self-healing runs...');
-    
+
+    const watchLive = els.watchLive && els.watchLive.checked;
+    const messages = watchLive ? [
+        'Opening browser window...',
+        'Watch the browser — automation is running...',
+        'Waiting for page responses...',
+        'Running self-healing checks...',
+        'Finalizing run report...'
+    ] : [
+        'Launching browser...',
+        'Executing automation steps...',
+        'Waiting for page responses...',
+        'Running self-healing checks...',
+        'Finalizing run report...'
+    ];
+    let msgIndex = 0;
+    showLoading(messages[0]);
+    const intervalId = setInterval(() => {
+        msgIndex = (msgIndex + 1) % messages.length;
+        if (els.loadingText) els.loadingText.textContent = messages[msgIndex];
+    }, 7000);
+
     try {
         const res = await fetch('/api/runs', {
             method: 'POST',
@@ -385,7 +430,7 @@ async function executeFlow() {
             body: JSON.stringify({
                 flow_id: state.activeFlowId,
                 browser: 'chromium',
-                headless: true,
+                headless: !watchLive,
                 max_repair_attempts: 3
             })
         });
@@ -396,12 +441,13 @@ async function executeFlow() {
         }
         
         const report = await res.json();
-        showToast(`Execution finished with status: ${report.status}`);
+        showToast(`Execution finished with status: ${report.status}`, report.status === 'pass' ? 'success' : 'error');
         await fetchRuns();
         selectRun(report.run_id);
     } catch (e) {
-        showToast(e.message);
+        showToast(e.message, 'error');
     } finally {
+        clearInterval(intervalId);
         hideLoading();
     }
 }
@@ -496,11 +542,11 @@ async function setBaseline() {
         });
         
         if (res.ok) {
-            showToast('Baseline screenshot set successfully!');
+            showToast('Baseline screenshot set successfully!', 'success');
             checkBaseline(run.flow_id);
         }
     } catch (e) {
-        showToast('Failed to set baseline.');
+        showToast('Failed to set baseline.', 'error');
     }
 }
 
@@ -519,6 +565,6 @@ async function openDiffModal() {
         
         els.diffModal.style.display = 'flex';
     } catch (e) {
-        showToast('Error loading visual diff screenshots.');
+        showToast('Error loading visual diff screenshots.', 'error');
     }
 }

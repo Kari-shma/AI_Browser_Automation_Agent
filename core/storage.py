@@ -74,7 +74,7 @@ init_db()
 def save_flow(flow: FlowSchema):
     conn = get_connection()
     cursor = conn.cursor()
-    steps_list = [step.dict() for step in flow.steps]
+    steps_list = [step.model_dump() for step in flow.steps]
     cursor.execute("""
     INSERT OR REPLACE INTO flows (flow_id, flow_name, url, steps_json, created_at, target_framework)
     VALUES (?, ?, ?, ?, ?, ?)
@@ -140,8 +140,8 @@ def save_run(run: RunReport):
         run.status,
         run.duration_ms,
         run.browser,
-        json.dumps(run.artifacts.dict()),
-        json.dumps(run.error.dict() if run.error else None),
+        json.dumps(run.artifacts.model_dump()),
+        json.dumps(run.error.model_dump() if run.error else None),
         run.timestamp
     ))
     conn.commit()

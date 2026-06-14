@@ -27,6 +27,10 @@
         </div>
         
         <div class="header-actions">
+            <div id="header-status" class="header-status-indicator unconfigured">
+                <span class="status-dot"></span>
+                <span id="header-status-text">No API key</span>
+            </div>
             <button id="btn-settings" class="btn btn-secondary">
                 <i class="fa-solid fa-key"></i> API Settings
             </button>
@@ -128,6 +132,13 @@
                             <button id="btn-generate-script" class="btn btn-secondary">
                                 <i class="fa-solid fa-code"></i> Generate Script
                             </button>
+                            <label class="watch-live-toggle" title="Open a real browser window and watch the automation run">
+                                <input type="checkbox" id="chk-watch-live">
+                                <span class="toggle-track">
+                                    <span class="toggle-thumb"></span>
+                                </span>
+                                <span class="toggle-label"><i class="fa-solid fa-eye"></i> Watch Live</span>
+                            </label>
                             <button id="btn-run-flow" class="btn btn-primary">
                                 <i class="fa-solid fa-play"></i> Run Automation
                             </button>
@@ -156,7 +167,7 @@
             <!-- Right Panel: Runs History & Self-Healing Diagnostics -->
             <div class="dashboard-panel flex-column gap-lg">
                 <!-- Runs list -->
-                <div class="glass-card panel-card flex-column" style="height: 350px;">
+                <div class="glass-card panel-card flex-column runs-history-card">
                     <h2 class="section-title"><i class="fa-solid fa-clock-rotate-left"></i> Run Execution History</h2>
                     <div id="runs-list" class="runs-list flex-grow">
                         <div class="empty-state">
@@ -258,6 +269,8 @@
             <p id="loading-text">Discovering user flows...</p>
         </div>
     </div>
+
+    <div id="toast-container"></div>
 
     <script src="/static/app.js"></script>
 </body>

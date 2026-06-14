@@ -100,6 +100,55 @@ body {
     color: var(--text-secondary);
 }
 
+/* Header actions row */
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.header-status-indicator {
+    font-size: 0.78rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-secondary);
+    padding: 0.35rem 0.75rem;
+    border-radius: 100px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border-color);
+    white-space: nowrap;
+}
+
+.status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--text-secondary);
+    flex-shrink: 0;
+}
+
+.header-status-indicator.configured .status-dot {
+    background: var(--success);
+}
+
+.header-status-indicator.unconfigured .status-dot {
+    background: var(--warning);
+}
+
+/* Runs history card */
+.runs-history-card {
+    max-height: 350px;
+    min-height: 160px;
+    flex-shrink: 0;
+}
+
+@media (max-width: 1200px) {
+    .runs-history-card {
+        max-height: 250px;
+    }
+}
+
 /* Layout containers */
 .main-container {
     flex: 1;
@@ -306,6 +355,18 @@ textarea.form-control {
 .status-badge.healing {
     background: var(--warning-bg);
     color: var(--warning);
+}
+
+.status-badge.error {
+    background: rgba(239, 68, 68, 0.1);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.status-badge.skipped {
+    background: rgba(156, 163, 175, 0.1);
+    color: #9ca3af;
+    border: 1px solid rgba(156, 163, 175, 0.2);
 }
 
 /* Tab container */
@@ -698,4 +759,92 @@ textarea.form-control {
 
 .artifact-link:hover {
     text-decoration: underline;
+}
+
+/* Toast notification system */
+#toast-container {
+    position: fixed;
+    bottom: 1.5rem;
+    right: 1.5rem;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 0.75rem 1.25rem;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    pointer-events: auto;
+    animation: toast-in 0.25s ease forwards;
+    max-width: 320px;
+    word-break: break-word;
+}
+
+.toast.toast-success { border-left: 3px solid var(--success); }
+.toast.toast-error   { border-left: 3px solid var(--error); }
+.toast.toast-info    { border-left: 3px solid var(--primary); }
+.toast.toast-out     { animation: toast-out 0.3s ease forwards; }
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateX(20px); }
+    to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes toast-out {
+    from { opacity: 1; transform: translateX(0); }
+    to   { opacity: 0; transform: translateX(20px); }
+}
+
+/* Watch Live toggle */
+.watch-live-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+}
+#chk-watch-live { display: none; }
+.toggle-track {
+    position: relative;
+    width: 40px;
+    height: 22px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 11px;
+    transition: background 0.2s, border-color 0.2s;
+    flex-shrink: 0;
+}
+#chk-watch-live:checked ~ .toggle-track {
+    background: rgba(99,102,241,0.5);
+    border-color: rgba(99,102,241,0.7);
+}
+.toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    transition: left 0.2s;
+}
+#chk-watch-live:checked ~ .toggle-track .toggle-thumb {
+    left: 20px;
+}
+.toggle-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    transition: color 0.2s;
+}
+#chk-watch-live:checked ~ .toggle-label {
+    color: var(--text-primary);
 }

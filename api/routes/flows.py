@@ -71,3 +71,26 @@ def generate_endpoint(
         return {"status": "success", "code": code}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Script generation failed: {str(e)}")
+
+@router.get("/{flow_id}/script")
+def get_script_endpoint(flow_id: str):
+    script_path = os.path.join(GENERATED_DIR, f"{flow_id}.py")
+    if not os.path.exists(script_path):
+        raise HTTPException(status_code=404, detail="Script not yet generated. Use POST /{flow_id}/generate first.")
+    with open(script_path, "r", encoding="utf-8") as f:
+        code = f.read()
+    return {"status": "exists", "code": code}
+
+@router.put("/{flow_id}/script")
+def update_script_endpoint(
+    flow_id: str,
+    code: str = Body(..., embed=True)
+):
+    flow = storage.get_flow(flow_id)
+    if not flow:
+        raise HTTPException(status_code=404, detail="Flow not found")
+    os.makedirs(GENERATED_DIR, exist_ok=True)
+    script_path = os.path.join(GENERATED_DIR, f"{flow_id}.py")
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(code)
+    return {"status": "saved"}
