@@ -67,11 +67,38 @@ const els = {
 
 // Init app
 document.addEventListener('DOMContentLoaded', () => {
+    initDarkMode();
     loadSettings();
     bindEvents();
     fetchFlows();
     fetchRuns();
 });
+
+// Dark mode
+function initDarkMode() {
+    const isDark = localStorage.getItem('darkMode') === 'true';
+    applyDark(isDark, false);
+}
+
+function applyDark(dark, reHighlight = true) {
+    // Toggle on <html> so html.dark overrides :root variables (same element, higher specificity)
+    document.documentElement.classList.toggle('dark', dark);
+
+    const icon = document.getElementById('dark-mode-icon');
+    if (icon) icon.className = dark ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
+
+    const lightTheme = document.getElementById('hljs-light');
+    const darkTheme  = document.getElementById('hljs-dark');
+    if (lightTheme) lightTheme.disabled = dark;
+    if (darkTheme)  darkTheme.disabled  = !dark;
+
+    if (reHighlight && window.hljs) {
+        document.querySelectorAll('code[data-highlighted]').forEach(el => {
+            el.removeAttribute('data-highlighted');
+            window.hljs.highlightElement(el);
+        });
+    }
+}
 
 // Load Settings from LocalStorage
 function loadSettings() {
@@ -110,6 +137,13 @@ function getHeaders() {
 
 // Bind UI events
 function bindEvents() {
+    // Dark mode toggle
+    document.getElementById('btn-dark-mode').addEventListener('click', () => {
+        const isDark = !document.documentElement.classList.contains('dark');
+        localStorage.setItem('darkMode', isDark);
+        applyDark(isDark);
+    });
+
     // Settings modal
     els.btnSettings.addEventListener('click', () => els.settingsModal.style.display = 'flex');
     els.closeSettings.addEventListener('click', () => els.settingsModal.style.display = 'none');

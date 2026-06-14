@@ -10,8 +10,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Syntax highlighting (light theme matching the app) -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css">
+    <!-- Syntax highlighting — light & dark themes toggled via JS -->
+    <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css">
+    <link id="hljs-dark"  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" disabled>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
     <link rel="stylesheet" href="/static/style.css">
 </head>
@@ -33,6 +34,9 @@
         </div>
         
         <div class="header-actions">
+            <button id="btn-dark-mode" class="btn btn-secondary btn-icon" title="Toggle dark mode" aria-label="Toggle dark mode">
+                <i id="dark-mode-icon" class="fa-solid fa-moon"></i>
+            </button>
             <button id="btn-settings" class="btn btn-secondary">
                 <i class="fa-solid fa-key"></i> API Settings
             </button>
