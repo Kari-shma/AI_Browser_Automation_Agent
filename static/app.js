@@ -32,7 +32,6 @@ const els = {
     
     tabBtnScript: document.getElementById('tab-btn-script'),
     codeEditorBlock: document.getElementById('code-editor-block'),
-    btnSaveScript: document.getElementById('btn-save-script'),
     btnRegenerateScript: document.getElementById('btn-regenerate-script'),
     btnRunFlow: document.getElementById('btn-run-flow'),
     btnFixRun: document.getElementById('btn-fix-run'),
@@ -145,7 +144,6 @@ function bindEvents() {
     
     // Script & execution actions
     els.btnRegenerateScript.addEventListener('click', () => generateScript());
-    els.btnSaveScript.addEventListener('click', saveScriptChanges);
     els.btnRunFlow.addEventListener('click', () => executeFlow(false));
     els.btnFixRun.addEventListener('click', () => executeFlow(true));
     
@@ -165,7 +163,14 @@ function hideLoading() {
     els.loadingOverlay.style.display = 'none';
 }
 
-// Show an in-app toast notification (top-right, under the header). Replaces the
+// Escape text for safe insertion into innerHTML.
+function esc(s) {
+    return String(s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// Show an in-app toast notification (top-center, under the header). Replaces the
 // native browser alert(). `type` is optional: 'success' | 'error' | 'info'.
 function showToast(msg, type) {
     const container = document.getElementById('toast-container');
@@ -291,18 +296,22 @@ function selectFlow(flowId) {
     els.detailUrl.href = flow.url;
     els.detailCreated.textContent = `Discovered at: ${new Date(flow.created_at).toLocaleString()}`;
     
-    // Render Steps
-    els.stepsContainer.innerHTML = flow.steps.map(step => `
+    // Render Steps — skip blank steps and only include parts that have content.
+    const steps = (flow.steps || []).filter(s => s && (s.action || s.description || s.selector || s.value));
+    els.stepsContainer.innerHTML = steps.map((step, i) => {
+        const action = esc(step.action || 'step');
+        const desc = step.description ? `<p>${esc(step.description)}</p>` : '';
+        const selector = step.selector ? `<span class="step-selector">${esc(step.selector)}</span>` : '';
+        const value = step.value ? `<div class="step-value">Value: <strong>${esc(step.value)}</strong></div>` : '';
+        return `
         <div class="step-card">
-            <div class="step-num">${step.step_id}</div>
+            <div class="step-num">${step.step_id || (i + 1)}</div>
             <div class="step-details">
-                <h4>${step.action}</h4>
-                <p>${step.description || ''}</p>
-                ${step.selector ? `<span class="step-selector">${step.selector}</span>` : ''}
-                ${step.value ? `<div style="font-size:0.75rem; color:var(--text-primary); margin-top:0.25rem;">Value: <strong>${step.value}</strong></div>` : ''}
+                <h4>${action}</h4>
+                ${desc}${selector}${value}
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
     
     // Reset tabs
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -352,23 +361,34 @@ async function triggerDiscovery() {
     }
 }
 
+// Set the code editor content. When `highlight` is true and highlight.js is
+// available, apply Python syntax highlighting.
+function setCode(text, highlight) {
+    els.codeEditorBlock.removeAttribute('data-highlighted');
+    els.codeEditorBlock.className = 'language-python';
+    els.codeEditorBlock.textContent = text;
+    if (highlight && window.hljs) {
+        try { window.hljs.highlightElement(els.codeEditorBlock); } catch (e) { /* ignore */ }
+    }
+}
+
 // Opening the "Generated Script" tab: show the saved script if it exists,
 // otherwise generate it on the fly (this tab replaces the old Generate button).
 async function openScriptTab() {
     const flowId = state.activeFlowId;
     if (!flowId) return;
     try {
-        els.codeEditorBlock.textContent = '# Loading script...';
+        setCode('# Loading script...', false);
         const res = await fetch(`/api/flows/${flowId}/script`);
         const data = await res.json();
         if (data.exists && data.code) {
-            els.codeEditorBlock.textContent = data.code;
+            setCode(data.code, true);
         } else {
             // Not generated yet → generate now.
             await generateScript();
         }
     } catch (e) {
-        els.codeEditorBlock.textContent = '# Failed to load code.';
+        setCode('# Failed to load code.', false);
     }
 }
 
@@ -380,12 +400,12 @@ async function generateScript() {
     if (!localStorage.getItem('apiKey')) {
         showToast('Please configure your API Key in API Settings first.');
         els.settingsModal.style.display = 'flex';
-        els.codeEditorBlock.textContent = '# Set your API key in API Settings, then reopen this tab to generate.';
+        setCode('# Set your API key in API Settings, then reopen this tab to generate.', false);
         return;
     }
 
     showLoading('Generating Playwright script...');
-    els.codeEditorBlock.textContent = '# Generating script…';
+    setCode('# Generating script…', false);
     try {
         const res = await fetch(`/api/flows/${flowId}/generate`, {
             method: 'POST',
@@ -396,39 +416,13 @@ async function generateScript() {
             throw new Error(err.detail || 'Failed to generate script');
         }
         const data = await res.json();
-        els.codeEditorBlock.textContent = data.code || '# (empty script returned)';
+        setCode(data.code || '# (empty script returned)', true);
         showToast('Script generated successfully!');
     } catch (e) {
-        els.codeEditorBlock.textContent = '# Generation failed: ' + e.message;
+        setCode('# Generation failed: ' + e.message, false);
         showToast(e.message);
     } finally {
         hideLoading();
-    }
-}
-
-// Save Script Changes (persists the edited script to disk)
-async function saveScriptChanges() {
-    if (!state.activeFlowId) return;
-
-    const code = els.codeEditorBlock.innerText;
-    if (!code || !code.trim() || code.trim().startsWith('# No script generated')) {
-        showToast('Nothing to save. Generate a script first.');
-        return;
-    }
-
-    try {
-        const res = await fetch(`/api/flows/${state.activeFlowId}/script`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ code })
-        });
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || 'Failed to save script');
-        }
-        showToast('Script saved.');
-    } catch (e) {
-        showToast(e.message);
     }
 }
 

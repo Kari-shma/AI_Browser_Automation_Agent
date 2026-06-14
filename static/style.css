@@ -447,25 +447,94 @@ textarea.form-control { resize: vertical; min-height: 76px; line-height: 1.5; }
     border: 1px solid var(--border);
     word-break: break-all;
 }
+.step-value { font-size: 0.75rem; color: var(--text-secondary); margin-top: 0.3rem; }
+.step-value strong { color: var(--text-primary); word-break: break-all; }
 
-/* ---------- Code editor ---------- */
+/* ---------- Code block (themed, light) ---------- */
+.code-block {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+}
+.code-block-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.5rem 0.6rem 0.5rem 0.9rem;
+    background: var(--surface-2);
+    border-bottom: 1px solid var(--border);
+}
+.code-block-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+.code-block-title i { color: var(--primary); }
+.code-block-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end; }
+.code-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 7px;
+    padding: 0.34rem 0.62rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+.code-action:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+
+/* Minimal icon-only buttons (copy / download) */
+.code-icon-btn {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-secondary);
+    border-radius: 8px;
+    font-size: 1.05rem;
+    transition: color 0.15s ease, background 0.15s ease;
+}
+.code-icon-btn:hover { color: var(--primary); background: var(--primary-soft); }
+
 .code-editor {
     font-family: var(--font-mono);
-    font-size: 0.79rem;
+    font-size: 0.8rem;
     line-height: 1.6;
-    background: #0e1117;
-    border: 1px solid #1d2230;
-    border-radius: var(--radius-md);
+    background: #fbfbfd;
+    color: #2b3038;
     padding: 1.1rem 1.2rem;
-    color: #d7dbe3;
+    margin: 0;
     height: 420px;
     overflow: auto;
     outline: none;
     white-space: pre;
     tab-size: 4;
-    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+    border: none;
 }
-.code-editor:focus { border-color: var(--primary); }
+/* highlight.js fills the block: use our font/spacing, let token colors show through */
+.code-editor code,
+.code-editor code.hljs {
+    display: block;
+    background: transparent;
+    padding: 0;
+    font-family: inherit;
+    font-size: inherit;
+    color: inherit;
+}
 
 /* ---------- Modals ---------- */
 .modal {
@@ -720,4 +789,3 @@ textarea.form-control { resize: vertical; min-height: 76px; line-height: 1.5; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: #d3d7df; border-radius: 100px; border: 2px solid transparent; background-clip: content-box; }
 *::-webkit-scrollbar-thumb:hover { background: #b9bec9; background-clip: content-box; }
-.code-editor::-webkit-scrollbar-thumb { background: #2a3142; background-clip: content-box; }
