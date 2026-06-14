@@ -33,7 +33,7 @@ const els = {
     tabBtnScript: document.getElementById('tab-btn-script'),
     codeEditorBlock: document.getElementById('code-editor-block'),
     btnSaveScript: document.getElementById('btn-save-script'),
-    btnGenerateScript: document.getElementById('btn-generate-script'),
+    btnRegenerateScript: document.getElementById('btn-regenerate-script'),
     btnRunFlow: document.getElementById('btn-run-flow'),
     btnFixRun: document.getElementById('btn-fix-run'),
     chkHeadless: document.getElementById('chk-headless'),
@@ -138,13 +138,13 @@ function bindEvents() {
             document.getElementById(tabId).style.display = 'flex';
             
             if (tabId === 'tab-script') {
-                loadScript(state.activeFlowId);
+                openScriptTab();
             }
         });
     });
     
     // Script & execution actions
-    els.btnGenerateScript.addEventListener('click', generateScript);
+    els.btnRegenerateScript.addEventListener('click', () => generateScript());
     els.btnSaveScript.addEventListener('click', saveScriptChanges);
     els.btnRunFlow.addEventListener('click', () => executeFlow(false));
     els.btnFixRun.addEventListener('click', () => executeFlow(true));
@@ -165,9 +165,40 @@ function hideLoading() {
     els.loadingOverlay.style.display = 'none';
 }
 
-// Show message toasts
-function showToast(msg) {
-    alert(msg); // Keep it native and simple
+// Show an in-app toast notification (top-right, under the header). Replaces the
+// native browser alert(). `type` is optional: 'success' | 'error' | 'info'.
+function showToast(msg, type) {
+    const container = document.getElementById('toast-container');
+    if (!container) { console.log(msg); return; }
+
+    if (!type) {
+        type = /\b(fail|failed|failure|error|invalid|missing|unable|denied|empty|not found|already|40\d|500)\b/i.test(msg)
+            ? 'error' : 'success';
+    }
+
+    const icon = type === 'error' ? 'fa-circle-exclamation'
+               : type === 'info' ? 'fa-circle-info'
+               : 'fa-circle-check';
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.innerHTML = `<i class="fa-solid ${icon}"></i><span></span>` +
+                      `<button class="toast-close" aria-label="Dismiss">&times;</button>`;
+    toast.querySelector('span').textContent = msg;   // textContent = no HTML injection
+    container.appendChild(toast);
+
+    // animate in
+    requestAnimationFrame(() => toast.classList.add('show'));
+
+    let removed = false;
+    const remove = () => {
+        if (removed) return;
+        removed = true;
+        toast.classList.remove('show');
+        setTimeout(() => toast.remove(), 320);
+    };
+    toast.querySelector('.toast-close').addEventListener('click', remove);
+    setTimeout(remove, 3800);
 }
 
 // Fetch Flows List
@@ -321,34 +352,10 @@ async function triggerDiscovery() {
     }
 }
 
-// Generate Playwright Script
-async function generateScript() {
-    if (!state.activeFlowId) return;
-    
-    showLoading('Generating Playwright script...');
-    
-    try {
-        const res = await fetch(`/api/flows/${state.activeFlowId}/generate`, {
-            method: 'POST',
-            headers: getHeaders()
-        });
-        
-        if (!res.ok) {
-            const err = await res.json();
-            throw new Error(err.detail || 'Failed to generate script');
-        }
-        
-        showToast('Script generated successfully!');
-        els.tabBtnScript.click(); // switch to script tab
-    } catch (e) {
-        showToast(e.message);
-    } finally {
-        hideLoading();
-    }
-}
-
-// Load Script Content (reads the saved script; does NOT call the LLM)
-async function loadScript(flowId) {
+// Opening the "Generated Script" tab: show the saved script if it exists,
+// otherwise generate it on the fly (this tab replaces the old Generate button).
+async function openScriptTab() {
+    const flowId = state.activeFlowId;
     if (!flowId) return;
     try {
         els.codeEditorBlock.textContent = '# Loading script...';
@@ -357,10 +364,45 @@ async function loadScript(flowId) {
         if (data.exists && data.code) {
             els.codeEditorBlock.textContent = data.code;
         } else {
-            els.codeEditorBlock.textContent = '# No script generated yet. Click "Generate Script" to create one.';
+            // Not generated yet → generate now.
+            await generateScript();
         }
     } catch (e) {
-        els.codeEditorBlock.textContent = '# Failed to load code or code not generated yet.';
+        els.codeEditorBlock.textContent = '# Failed to load code.';
+    }
+}
+
+// Generate (or regenerate) the Playwright script and show it in the editor.
+async function generateScript() {
+    const flowId = state.activeFlowId;
+    if (!flowId) return;
+
+    if (!localStorage.getItem('apiKey')) {
+        showToast('Please configure your API Key in API Settings first.');
+        els.settingsModal.style.display = 'flex';
+        els.codeEditorBlock.textContent = '# Set your API key in API Settings, then reopen this tab to generate.';
+        return;
+    }
+
+    showLoading('Generating Playwright script...');
+    els.codeEditorBlock.textContent = '# Generating script…';
+    try {
+        const res = await fetch(`/api/flows/${flowId}/generate`, {
+            method: 'POST',
+            headers: getHeaders()
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail || 'Failed to generate script');
+        }
+        const data = await res.json();
+        els.codeEditorBlock.textContent = data.code || '# (empty script returned)';
+        showToast('Script generated successfully!');
+    } catch (e) {
+        els.codeEditorBlock.textContent = '# Generation failed: ' + e.message;
+        showToast(e.message);
+    } finally {
+        hideLoading();
     }
 }
 

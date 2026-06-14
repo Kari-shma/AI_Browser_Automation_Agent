@@ -17,6 +17,9 @@
     <div class="glow-orb orb-1"></div>
     <div class="glow-orb orb-2"></div>
 
+    <!-- In-app toast notifications (replaces native browser alerts) -->
+    <div id="toast-container" class="toast-container"></div>
+
     <header class="header">
         <div class="logo">
             <i class="fa-solid fa-wand-magic-sparkles logo-icon"></i>
@@ -112,27 +115,16 @@
             <!-- Middle Panel: Active Flow Details / Script Viewer -->
             <div class="dashboard-panel flex-column gap-lg">
                 <div class="glass-card panel-card flex-grow flex-column" id="flow-detail-card" style="display: none;">
-                    <div class="panel-header-row">
-                        <h2 class="section-title" id="detail-flow-name">Active Flow</h2>
-                        <span class="badge" id="detail-framework-badge">Playwright</span>
-                    </div>
-                    
-                    <div class="flow-meta">
-                        <p><strong>Starting URL:</strong> <a id="detail-url" href="#" target="_blank"></a></p>
-                        <p class="text-secondary" id="detail-created"></p>
-                    </div>
-
-                    <div class="tabs">
-                        <button class="tab-btn active" data-tab="tab-steps">Flow Steps</button>
-                        <button class="tab-btn" data-tab="tab-script" id="tab-btn-script">Generated Script</button>
-                    </div>
-
-                    <div class="tab-content flex-grow" id="tab-steps">
-                        <div id="steps-container" class="steps-container"></div>
-                        <div class="action-bar">
-                            <button id="btn-generate-script" class="btn btn-secondary">
-                                <i class="fa-solid fa-code"></i> Generate Script
-                            </button>
+                    <div class="flow-detail-top">
+                        <div class="panel-header-row">
+                            <h2 class="section-title" id="detail-flow-name">Active Flow</h2>
+                            <span class="badge" id="detail-framework-badge">Playwright</span>
+                        </div>
+                        <div class="flow-meta">
+                            <p class="flow-url-line"><strong>Starting URL:</strong> <a id="detail-url" href="#" target="_blank"></a></p>
+                            <p class="text-secondary flow-created-line" id="detail-created"></p>
+                        </div>
+                        <div class="action-bar flow-actions">
                             <button id="btn-run-flow" class="btn btn-primary">
                                 <i class="fa-solid fa-play"></i> Run Automation
                             </button>
@@ -145,9 +137,21 @@
                         </div>
                     </div>
 
+                    <div class="tabs">
+                        <button class="tab-btn active" data-tab="tab-steps">Flow Steps</button>
+                        <button class="tab-btn" data-tab="tab-script" id="tab-btn-script">Generated Script</button>
+                    </div>
+
+                    <div class="tab-content flex-grow" id="tab-steps">
+                        <div id="steps-container" class="steps-container"></div>
+                    </div>
+
                     <div class="tab-content flex-grow" id="tab-script" style="display: none;">
                         <pre class="code-editor" id="code-editor-block" contenteditable="true"></pre>
                         <div class="action-bar">
+                            <button id="btn-regenerate-script" class="btn btn-secondary">
+                                <i class="fa-solid fa-arrows-rotate"></i> Regenerate
+                            </button>
                             <button id="btn-save-script" class="btn btn-secondary">
                                 <i class="fa-solid fa-floppy-disk"></i> Save Changes
                             </button>
@@ -247,15 +251,15 @@
                 <div class="diff-comparison-container">
                     <div class="diff-frame">
                         <h3>Baseline Screenshot</h3>
-                        <img id="img-baseline" class="diff-screenshot" src="" alt="Baseline">
+                        <div class="diff-scroll"><img id="img-baseline" class="diff-screenshot" src="" alt="Baseline"></div>
                     </div>
                     <div class="diff-frame">
                         <h3>Current Screenshot</h3>
-                        <img id="img-current" class="diff-screenshot" src="" alt="Current">
+                        <div class="diff-scroll"><img id="img-current" class="diff-screenshot" src="" alt="Current"></div>
                     </div>
                     <div class="diff-frame">
                         <h3>Visual Diff Overlay</h3>
-                        <img id="img-diff" class="diff-screenshot" src="" alt="Visual Diff">
+                        <div class="diff-scroll"><img id="img-diff" class="diff-screenshot" src="" alt="Visual Diff"></div>
                     </div>
                 </div>
             </div>
