@@ -1,11 +1,47 @@
 import os
+import re
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 from core.schema import FlowSchema, RunReport, DiagnosisReport
 from core import storage
 from agents import script_generator, execution_agent, error_diagnosis, adaptive_repair, regression_monitor
 
 GENERATED_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "scripts", "generated")
+
+
+def _parse_step_selectors(script: str) -> Dict[int, Optional[str]]:
+    """Extract {step_id: selector} from current_step / current_selector pairs in a generated script."""
+    result = {}
+    step_id = None
+    for line in script.splitlines():
+        s = line.strip()
+        m = re.match(r'current_step\s*=\s*(\d+)', s)
+        if m:
+            step_id = int(m.group(1))
+            continue
+        if step_id is not None:
+            m = re.match(r'current_selector\s*=\s*"(.*)"', s)
+            if m:
+                result[step_id] = m.group(1)
+                step_id = None
+                continue
+            if re.match(r'current_selector\s*=\s*None', s):
+                result[step_id] = None
+                step_id = None
+    return result
+
+
+def _sync_flow_steps_from_script(flow: FlowSchema, script: str) -> bool:
+    """Update flow.steps selectors to match what the repaired script uses. Returns True if anything changed."""
+    new_selectors = _parse_step_selectors(script)
+    changed = False
+    for step in flow.steps:
+        if step.step_id in new_selectors:
+            new_sel = new_selectors[step.step_id]
+            if new_sel != step.selector:
+                step.selector = new_sel
+                changed = True
+    return changed
 
 def run_orchestrated_flow(
     flow_id: str,
@@ -67,7 +103,13 @@ def run_orchestrated_flow(
                 flow_id, script_content, diagnosis, api_key, provider, base_url, model
             )
             script_content = patched_script
-            
+
+            # Sync updated selectors back to the FlowSchema so the UI shows the
+            # repaired step (e.g. the new selector replacing the broken one).
+            if _sync_flow_steps_from_script(flow, patched_script):
+                print("Flow steps updated with repaired selectors.")
+                storage.save_flow(flow)
+
             # Execute again
             print("Executing patched script...")
             run_report = execution_agent.execute_run(flow_id, script_content, browser, headless)

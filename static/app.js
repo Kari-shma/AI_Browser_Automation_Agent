@@ -277,26 +277,8 @@ function renderRuns() {
     }).join('');
 }
 
-// Select a Flow
-function selectFlow(flowId) {
-    state.activeFlowId = flowId;
-    renderFlows();
-
-    // Reset the self-heal button until this flow has a failing run.
-    setFixButtonEnabled(false);
-
-    const flow = state.flows.find(f => f.flow_id === flowId);
-    if (!flow) return;
-    
-    els.flowEmptyState.style.display = 'none';
-    els.flowDetailCard.style.display = 'flex';
-    
-    els.detailFlowName.textContent = flow.flow_name;
-    els.detailUrl.textContent = flow.url;
-    els.detailUrl.href = flow.url;
-    els.detailCreated.textContent = `Discovered at: ${new Date(flow.created_at).toLocaleString()}`;
-    
-    // Render Steps — skip blank steps and only include parts that have content.
+// Render just the steps list for a flow (reusable without resetting tabs/header).
+function renderSteps(flow) {
     const steps = (flow.steps || []).filter(s => s && (s.action || s.description || s.selector || s.value));
     els.stepsContainer.innerHTML = steps.map((step, i) => {
         const action = esc(step.action || 'step');
@@ -312,7 +294,29 @@ function selectFlow(flowId) {
             </div>
         </div>`;
     }).join('');
-    
+}
+
+// Select a Flow
+function selectFlow(flowId) {
+    state.activeFlowId = flowId;
+    renderFlows();
+
+    // Reset the self-heal button until this flow has a failing run.
+    setFixButtonEnabled(false);
+
+    const flow = state.flows.find(f => f.flow_id === flowId);
+    if (!flow) return;
+
+    els.flowEmptyState.style.display = 'none';
+    els.flowDetailCard.style.display = 'flex';
+
+    els.detailFlowName.textContent = flow.flow_name;
+    els.detailUrl.textContent = flow.url;
+    els.detailUrl.href = flow.url;
+    els.detailCreated.textContent = `Discovered at: ${new Date(flow.created_at).toLocaleString()}`;
+
+    renderSteps(flow);
+
     // Reset tabs
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.tab-btn[data-tab="tab-steps"]').classList.add('active');
@@ -473,6 +477,31 @@ async function executeFlow(repair = false) {
 
         await fetchRuns();
         selectRun(report.run_id);
+
+        // After a repair run, re-fetch the flow so the steps panel reflects any
+        // selector changes made by the adaptive repair agent.
+        if (repair && state.activeFlowId) {
+            try {
+                const flowRes = await fetch(`/api/flows/${state.activeFlowId}`);
+                if (flowRes.ok) {
+                    const updatedFlow = await flowRes.json();
+                    const idx = state.flows.findIndex(f => f.flow_id === updatedFlow.flow_id);
+                    if (idx !== -1) state.flows[idx] = updatedFlow;
+                    // Only re-render steps if the Flow Steps tab is active.
+                    const stepsTabVisible = document.getElementById('tab-steps').style.display !== 'none';
+                    if (stepsTabVisible) {
+                        renderSteps(updatedFlow);
+                    }
+                    // If the script tab is open, reload the patched script content too.
+                    const scriptTabVisible = document.getElementById('tab-script').style.display !== 'none';
+                    if (scriptTabVisible) {
+                        openScriptTab();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to refresh flow steps after repair:', e);
+            }
+        }
     } catch (e) {
         showToast(e.message);
     } finally {
