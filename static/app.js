@@ -430,7 +430,16 @@ async function generateScript() {
 // repair=false -> "Run Automation": execute the script once, no self-healing.
 // repair=true  -> "Fix Script & Run": diagnose, patch, and re-run (self-healing).
 async function executeFlow(repair = false) {
-    if (!state.activeFlowId) return;
+    if (!state.activeFlowId) {
+        showToast('Select a flow first.', 'info');
+        return;
+    }
+
+    if (!localStorage.getItem('apiKey')) {
+        showToast('Please configure your API Key in API Settings first.', 'error');
+        els.settingsModal.style.display = 'flex';
+        return;
+    }
 
     showLoading(repair
         ? 'Diagnosing failure, patching script & re-running...'
