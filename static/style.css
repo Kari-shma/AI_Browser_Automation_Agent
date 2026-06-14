@@ -105,6 +105,7 @@ body {
 }
 
 .logo { display: flex; align-items: center; gap: 0.85rem; }
+.header-actions { display: flex; align-items: center; gap: 0.55rem; }
 
 .logo-icon {
     font-size: 1.15rem;
@@ -789,3 +790,79 @@ textarea.form-control { resize: vertical; min-height: 76px; line-height: 1.5; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb { background: #d3d7df; border-radius: 100px; border: 2px solid transparent; background-clip: content-box; }
 *::-webkit-scrollbar-thumb:hover { background: #b9bec9; background-clip: content-box; }
+
+/* ---------- Icon-only button (dark mode toggle) ---------- */
+.btn-icon {
+    padding: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+.btn-icon i { font-size: 1rem; }
+
+/* ---------- Dark mode ----------
+   Class is placed on <html> so it sits on the same element as :root,
+   giving html.dark higher specificity (0-1-1) than :root (0-0-1).
+   This guarantees every var(--x) in the document picks up the dark values.
+   -------------------------------------------------------------------- */
+html.dark {
+    color-scheme: dark;
+
+    --bg: #0e1017;
+    --surface: #181b25;
+    --surface-2: #1d2030;
+    --surface-3: #232739;
+    --border: #282d40;
+    --border-strong: #353c54;
+
+    --text-primary: #e6e8f0;
+    --text-secondary: #8a93a8;
+    --text-tertiary: #505873;
+
+    --primary-soft: rgba(91, 91, 240, 0.15);
+    --primary-ring: rgba(91, 91, 240, 0.25);
+
+    --success-bg: rgba(10, 157, 98, 0.13);
+    --error-bg: rgba(220, 43, 61, 0.13);
+    --warning-bg: rgba(196, 125, 9, 0.13);
+}
+
+html.dark body {
+    background-color: var(--bg);
+    background-image:
+        radial-gradient(1100px 520px at 12% -8%, rgba(91,91,240,0.07) 0%, transparent 60%),
+        radial-gradient(1000px 520px at 100% 0%, rgba(139,92,246,0.06) 0%, transparent 55%);
+}
+
+html.dark .header {
+    background: rgba(24, 27, 37, 0.85);
+}
+
+html.dark .code-editor {
+    background: #12141e;
+    color: #c9cdd9;
+}
+
+html.dark .loading-overlay {
+    background: rgba(14, 16, 23, 0.8);
+}
+
+html.dark .modal {
+    background: rgba(8, 9, 14, 0.6);
+}
+
+/* Dropdown arrow recoloured for dark surfaces */
+html.dark select.form-control {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%238a93a8' d='M6 8 0 2l1.4-1.4L6 5.2 10.6.6 12 2z'/%3E%3C/svg%3E");
+}
+
+html.dark *::-webkit-scrollbar-thumb { background: #353c54; background-clip: content-box; }
+html.dark *::-webkit-scrollbar-thumb:hover { background: #454e6a; background-clip: content-box; }
+
+/* Smooth transition on theme switch */
+body, .glass-card, .header, .form-control, .btn-secondary, .flow-item, .run-item,
+.step-card, .tabs, .tab-btn, .modal-content, .run-meta-info, .artifact-link,
+.settings-hint, .diagnosis-panel, .visual-regression-section {
+    transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+}
