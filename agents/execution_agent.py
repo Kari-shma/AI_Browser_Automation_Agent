@@ -41,7 +41,7 @@ def execute_run(flow_id: str, script_content: str, browser: str = "chromium", he
         "--screenshot", screenshot_path,
         "--snapshot", snapshot_path
     ]
-    if headless:
+    if headless or os.environ.get("FORCE_HEADLESS") == "1":
         cmd.append("--headless")
 
     start_time = time.time()

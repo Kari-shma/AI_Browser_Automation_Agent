@@ -1,3 +1,13 @@
+---
+title: AutoFlow AI
+emoji: 🤖
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🪄 AutoFlow AI — Self‑Healing Browser Automation Agent
 
 AutoFlow AI turns a plain‑English goal into a **runnable browser‑automation script**, executes it, and **automatically diagnoses and repairs failures** when selectors break or pages change. It pairs a multi‑agent LLM pipeline with Playwright and a clean web dashboard.
